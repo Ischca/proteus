@@ -2,6 +2,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -13,7 +14,11 @@ import { detectCommands } from './detectors/commands.js';
 import { generateClaudeMd } from './generator.js';
 import type { AnalysisResult, CLIOptions, GeneratorOptions } from './types.js';
 
-const VERSION = '0.1.0';
+// Read version from package.json
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkgPath = path.join(__dirname, '..', 'package.json');
+const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf-8'));
+const VERSION = pkg.version;
 
 // ============================================
 // ASCII Art Logo
