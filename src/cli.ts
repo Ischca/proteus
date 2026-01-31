@@ -192,7 +192,7 @@ async function runTransform(options: TransformOptions) {
 
   // Step 2: Detect existing documents
   const spinner = ora('Reading existing documents...').start();
-  const docs = await detectProjectDocuments(cwd);
+  let docs = await detectProjectDocuments(cwd);
 
   if (docs.claudeMd) {
     spinner.succeed(`Found CLAUDE.md with ${docs.claudeMd.rules.length} rules`);
@@ -207,7 +207,38 @@ async function runTransform(options: TransformOptions) {
   // Print summary
   printSummary(analysis);
 
-  // Step 3: Get agent suggestions from Claude Code
+  // Step 3: Generate CLAUDE.md first if it doesn't exist
+  if (!docs.claudeMd) {
+    let shouldGenerateClaudeMd = options.includeClaudeMd;
+
+    if (!shouldGenerateClaudeMd && options.interactive && !options.force) {
+      const { generateClaudeMd: userChoice } = await prompts({
+        type: 'confirm',
+        name: 'generateClaudeMd',
+        message: 'No CLAUDE.md found. Generate one first? (Recommended for better agent generation)',
+        initial: true,
+      });
+      shouldGenerateClaudeMd = userChoice;
+    }
+
+    if (shouldGenerateClaudeMd) {
+      console.log(chalk.cyan('\n📄 Generating CLAUDE.md...\n'));
+      const generatorOptions: GeneratorOptions = {
+        template: 'full',
+        includeExamples: true,
+        includeComments: true,
+        version: VERSION,
+      };
+      const claudeContent = generateClaudeMd(analysis, { ...generatorOptions, documents: docs, verbose: options.verbose, lang });
+      await fs.writeFile(path.join(cwd, 'CLAUDE.md'), claudeContent);
+      console.log(chalk.green('✅ Created CLAUDE.md\n'));
+
+      // Re-read documents to include the new CLAUDE.md
+      docs = await detectProjectDocuments(cwd);
+    }
+  }
+
+  // Step 4: Get agent suggestions from Claude Code
   console.log(chalk.cyan('\n🤖 Generating agent suggestions...\n'));
 
   const suggestions = suggestAgents(analysis, docs, { verbose: options.verbose, lang });
@@ -307,34 +338,6 @@ async function runTransform(options: TransformOptions) {
     const filePath = path.join(fullOutputDir, `${agent.name}.md`);
     await fs.writeFile(filePath, agent.content);
     console.log(chalk.green(`✅ Created ${outputDir}/${agent.name}.md`));
-  }
-
-  // Ask to generate CLAUDE.md if it doesn't exist
-  if (!docs.claudeMd) {
-    let shouldGenerateClaudeMd = options.includeClaudeMd;
-
-    if (!shouldGenerateClaudeMd && options.interactive && !options.force) {
-      const { generateClaudeMd: userChoice } = await prompts({
-        type: 'confirm',
-        name: 'generateClaudeMd',
-        message: 'No CLAUDE.md found. Would you like to generate one?',
-        initial: true,
-      });
-      shouldGenerateClaudeMd = userChoice;
-    }
-
-    if (shouldGenerateClaudeMd) {
-      console.log(chalk.cyan('\n📄 Generating CLAUDE.md...\n'));
-      const generatorOptions: GeneratorOptions = {
-        template: 'full',
-        includeExamples: true,
-        includeComments: true,
-        version: VERSION,
-      };
-      const claudeContent = generateClaudeMd(analysis, { ...generatorOptions, documents: docs, verbose: options.verbose, lang });
-      await fs.writeFile(path.join(cwd, 'CLAUDE.md'), claudeContent);
-      console.log(chalk.green('✅ Created CLAUDE.md'));
-    }
   }
 
   // Print next steps
