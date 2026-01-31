@@ -135,18 +135,18 @@ function getDefaultSuggestions(analysis: AnalysisResult): AgentSuggestion[] {
   // Code reviewer - always useful
   suggestions.push({
     name: 'code-reviewer',
-    description: `${formatLanguage(stack.language)}コードのレビュー専門エージェント`,
-    focus: 'コード品質、ベストプラクティス、セキュリティ',
-    reason: 'コードレビューは全てのプロジェクトで有効',
+    description: `${formatLanguage(stack.language)} code review specialist`,
+    focus: 'Code quality, best practices, security',
+    reason: 'Code review is valuable for all projects',
   });
 
   // Test writer - if test framework exists
   if (stack.testFramework !== 'unknown') {
     suggestions.push({
       name: 'test-writer',
-      description: `${formatTestFramework(stack.testFramework)}でのテスト作成専門エージェント`,
-      focus: 'ユニットテスト、統合テスト、テストカバレッジ',
-      reason: `${formatTestFramework(stack.testFramework)}が検出されたため`,
+      description: `${formatTestFramework(stack.testFramework)} test writing specialist`,
+      focus: 'Unit tests, integration tests, test coverage',
+      reason: `${formatTestFramework(stack.testFramework)} detected in project`,
     });
   }
 
@@ -155,16 +155,16 @@ function getDefaultSuggestions(analysis: AnalysisResult): AgentSuggestion[] {
     if (['react', 'vue', 'svelte', 'angular'].includes(stack.framework)) {
       suggestions.push({
         name: 'component-builder',
-        description: `${formatFramework(stack.framework)}コンポーネント設計専門エージェント`,
-        focus: 'コンポーネント設計、状態管理、パフォーマンス',
-        reason: `${formatFramework(stack.framework)}プロジェクトのため`,
+        description: `${formatFramework(stack.framework)} component design specialist`,
+        focus: 'Component design, state management, performance',
+        reason: `${formatFramework(stack.framework)} frontend project`,
       });
     } else if (['express', 'fastify', 'nestjs', 'fastapi', 'gin'].includes(stack.framework)) {
       suggestions.push({
         name: 'api-designer',
-        description: `${formatFramework(stack.framework)} APIエンドポイント設計専門エージェント`,
-        focus: 'API設計、バリデーション、エラーハンドリング',
-        reason: `${formatFramework(stack.framework)}バックエンドプロジェクトのため`,
+        description: `${formatFramework(stack.framework)} API endpoint design specialist`,
+        focus: 'API design, validation, error handling',
+        reason: `${formatFramework(stack.framework)} backend project`,
       });
     }
   }
@@ -172,17 +172,17 @@ function getDefaultSuggestions(analysis: AnalysisResult): AgentSuggestion[] {
   // Docs writer
   suggestions.push({
     name: 'docs-writer',
-    description: 'ドキュメント作成専門エージェント',
-    focus: 'README、APIドキュメント、コメント',
-    reason: 'ドキュメントは全てのプロジェクトで重要',
+    description: 'Documentation writing specialist',
+    focus: 'README, API docs, code comments',
+    reason: 'Documentation is important for all projects',
   });
 
   // Refactorer
   suggestions.push({
     name: 'refactorer',
-    description: `${formatLanguage(stack.language)}リファクタリング専門エージェント`,
-    focus: 'コード改善、設計パターン、技術的負債の解消',
-    reason: 'コードの継続的改善に有効',
+    description: `${formatLanguage(stack.language)} refactoring specialist`,
+    focus: 'Code improvement, design patterns, technical debt',
+    reason: 'Continuous code improvement',
   });
 
   return suggestions.slice(0, 5); // Max 5 suggestions
@@ -203,26 +203,26 @@ function generateFallbackAgent(
   lines.push('');
   lines.push(`> ${suggestion.description}`);
   lines.push('');
-  lines.push('## 役割');
+  lines.push('## Role');
   lines.push('');
-  lines.push(`${projectName}プロジェクトにおける${suggestion.focus}を担当します。`);
+  lines.push(`Handles ${suggestion.focus} for the ${projectName} project.`);
   lines.push('');
-  lines.push('## プロジェクト情報');
+  lines.push('## Project Information');
   lines.push('');
-  lines.push(`- **言語**: ${formatLanguage(stack.language)}${stack.languageVersion ? ` ${stack.languageVersion}` : ''}`);
+  lines.push(`- **Language**: ${formatLanguage(stack.language)}${stack.languageVersion ? ` ${stack.languageVersion}` : ''}`);
   if (stack.framework !== 'unknown') {
-    lines.push(`- **フレームワーク**: ${formatFramework(stack.framework)}`);
+    lines.push(`- **Framework**: ${formatFramework(stack.framework)}`);
   }
   if (stack.testFramework !== 'unknown') {
-    lines.push(`- **テスト**: ${formatTestFramework(stack.testFramework)}`);
+    lines.push(`- **Testing**: ${formatTestFramework(stack.testFramework)}`);
   }
-  lines.push(`- **構造**: ${patterns.structure.type}`);
+  lines.push(`- **Structure**: ${patterns.structure.type}`);
   lines.push('');
 
   if (rules.length > 0 || conventions.length > 0) {
-    lines.push('## プロジェクトルール');
+    lines.push('## Project Rules');
     lines.push('');
-    lines.push('以下のルールを遵守してください:');
+    lines.push('Follow these rules:');
     lines.push('');
     [...rules, ...conventions].forEach(rule => {
       lines.push(`- ${rule}`);
@@ -230,10 +230,10 @@ function generateFallbackAgent(
     lines.push('');
   }
 
-  lines.push('## 指示');
+  lines.push('## Instructions');
   lines.push('');
-  lines.push(`このエージェントは${suggestion.focus}に特化しています。`);
-  lines.push(`${formatLanguage(stack.language)}のベストプラクティスに従ってください。`);
+  lines.push(`This agent specializes in ${suggestion.focus}.`);
+  lines.push(`Follow ${formatLanguage(stack.language)} best practices.`);
   lines.push('');
 
   lines.push('---');

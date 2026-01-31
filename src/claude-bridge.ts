@@ -106,90 +106,90 @@ export function generateAgentContent(
 
 function buildAgentSuggestionPrompt(analysis: AnalysisResult, documents: ProjectDocuments): string {
   const existingRules = documents.claudeMd?.rules || [];
-  const existingAgents = documents.existingAgents.map(a => a.name).join(', ') || 'なし';
+  const existingAgents = documents.existingAgents.map(a => a.name).join(', ') || 'none';
 
-  return `あなたはプロジェクト分析の専門家です。以下のプロジェクト情報に基づいて、このプロジェクトに最適なClaude Codeエージェントを5つ提案してください。
+  return `You are a project analysis expert. Based on the following project information, suggest 5 optimal Claude Code agents specifically tailored for this project.
 
-## プロジェクト情報
+## Project Information
 
-- **名前**: ${analysis.projectName}
-- **言語**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
-- **フレームワーク**: ${analysis.stack.framework}
-- **テストフレームワーク**: ${analysis.stack.testFramework}
-- **追加ツール**: ${analysis.stack.additionalTools.join(', ') || 'なし'}
-- **プロジェクト構造**: ${analysis.patterns.structure.type}
-- **既存エージェント**: ${existingAgents}
+- **Name**: ${analysis.projectName}
+- **Language**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
+- **Framework**: ${analysis.stack.framework}
+- **Test Framework**: ${analysis.stack.testFramework}
+- **Additional Tools**: ${analysis.stack.additionalTools.join(', ') || 'none'}
+- **Project Structure**: ${analysis.patterns.structure.type}
+- **Existing Agents**: ${existingAgents}
 
-## 既存のルール・規約
-${existingRules.length > 0 ? existingRules.map(r => `- ${r}`).join('\n') : '特になし'}
+## Existing Rules/Conventions
+${existingRules.length > 0 ? existingRules.map(r => `- ${r}`).join('\n') : 'None specified'}
 
-## 要件
+## Requirements
 
-1. このプロジェクト専用にパーソナライズされたエージェントを提案すること
-2. 汎用的なエージェントではなく、このプロジェクトの言語・FW・構造に特化したものであること
-3. 既存のエージェントと重複しないこと
-4. 各エージェントには具体的な役割と、なぜこのプロジェクトに有効かの理由を含めること
+1. Suggest agents that are PERSONALIZED for this specific project
+2. NOT generic agents - they must be specialized for this project's language, framework, and structure
+3. Do not duplicate existing agents
+4. Include a specific role and reason why each agent is valuable for THIS project
 
-## 出力形式（JSON）
+## Output Format (JSON)
 
-以下の形式で出力してください:
+Output in the following format:
 
 \`\`\`json
 [
   {
-    "name": "エージェント名（kebab-case）",
-    "description": "一行での説明",
-    "focus": "このエージェントが専門とする領域",
-    "reason": "このプロジェクトでなぜ有効か"
+    "name": "agent-name-in-kebab-case",
+    "description": "One-line description of what this agent does",
+    "focus": "The specific domain this agent specializes in",
+    "reason": "Why this agent is valuable for this specific project"
   }
 ]
 \`\`\`
 
-JSONのみを出力してください。`;
+Output ONLY the JSON.`;
 }
 
 function buildClaudeMdPrompt(analysis: AnalysisResult, documents: ProjectDocuments): string {
   const existingContent = documents.claudeMd?.rawContent || '';
 
-  return `あなたはプロジェクトドキュメントの専門家です。以下のプロジェクト情報に基づいて、CLAUDE.md（Claude Code用のプロジェクト説明ファイル）を生成してください。
+  return `You are a project documentation expert. Based on the following project information, generate a CLAUDE.md file (project description file for Claude Code).
 
-## プロジェクト情報
+## Project Information
 
-- **名前**: ${analysis.projectName}
-- **説明**: ${analysis.description || '不明'}
-- **言語**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
-- **フレームワーク**: ${analysis.stack.framework} ${analysis.stack.frameworkVersion || ''}
-- **テストフレームワーク**: ${analysis.stack.testFramework}
-- **パッケージマネージャー**: ${analysis.stack.packageManager}
-- **追加ツール**: ${analysis.stack.additionalTools.join(', ') || 'なし'}
+- **Name**: ${analysis.projectName}
+- **Description**: ${analysis.description || 'Unknown'}
+- **Language**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
+- **Framework**: ${analysis.stack.framework} ${analysis.stack.frameworkVersion || ''}
+- **Test Framework**: ${analysis.stack.testFramework}
+- **Package Manager**: ${analysis.stack.packageManager}
+- **Additional Tools**: ${analysis.stack.additionalTools.join(', ') || 'none'}
 
-## プロジェクト構造
-- タイプ: ${analysis.patterns.structure.type}
-- ソースディレクトリ: ${analysis.patterns.structure.sourceDir}
-- テストディレクトリ: ${analysis.patterns.structure.testDir || 'なし'}
+## Project Structure
+- Type: ${analysis.patterns.structure.type}
+- Source Directory: ${analysis.patterns.structure.sourceDir}
+- Test Directory: ${analysis.patterns.structure.testDir || 'none'}
 
-## コマンド
-- 開発: ${analysis.commands.dev || 'なし'}
-- ビルド: ${analysis.commands.build || 'なし'}
-- テスト: ${analysis.commands.test || 'なし'}
-- リント: ${analysis.commands.lint || 'なし'}
+## Commands
+- Development: ${analysis.commands.dev || 'none'}
+- Build: ${analysis.commands.build || 'none'}
+- Test: ${analysis.commands.test || 'none'}
+- Lint: ${analysis.commands.lint || 'none'}
 
-## 命名規則
-- ファイル（コンポーネント）: ${analysis.patterns.naming.files.components || '不明'}
-- ファイル（テスト）: ${analysis.patterns.naming.files.tests || '不明'}
-- 関数: ${analysis.patterns.naming.code.functions}
-- 変数: ${analysis.patterns.naming.code.variables}
+## Naming Conventions
+- Component Files: ${analysis.patterns.naming.files.components || 'unknown'}
+- Test Files: ${analysis.patterns.naming.files.tests || 'unknown'}
+- Functions: ${analysis.patterns.naming.code.functions}
+- Variables: ${analysis.patterns.naming.code.variables}
 
-${existingContent ? `## 既存のCLAUDE.md内容（参考）\n${existingContent}` : ''}
+${existingContent ? `## Existing CLAUDE.md Content (for reference)\n${existingContent}` : ''}
 
-## 要件
+## Requirements
 
-1. Claude Codeがこのプロジェクトを理解し、効果的に作業できるような内容にすること
-2. プロジェクトの重要なルール、規約、ベストプラクティスを含めること
-3. 明確で読みやすいMarkdown形式で出力すること
-4. 既存の内容がある場合は、それを活かしつつ改善すること
+1. Create content that helps Claude Code understand and work effectively with this project
+2. Include important rules, conventions, and best practices
+3. Output in clear, readable Markdown format
+4. If existing content exists, improve upon it while preserving valuable information
 
-Markdownのみを出力してください。`;
+Output ONLY the Markdown content.`;
 }
 
 function buildAgentPrompt(
@@ -201,65 +201,65 @@ function buildAgentPrompt(
   const existingRules = documents.claudeMd?.rules || [];
   const conventions = documents.claudeMd?.conventions || [];
 
-  return `あなたはClaude Codeエージェントの設計専門家です。以下の情報に基づいて、プロジェクト専用のエージェント定義（Markdown）を生成してください。
+  return `You are a Claude Code agent design expert. Based on the following information, generate a project-specific agent definition in Markdown.
 
-## エージェント情報
-- **名前**: ${agentName}
-- **説明**: ${agentDescription}
+## Agent Information
+- **Name**: ${agentName}
+- **Description**: ${agentDescription}
 
-## プロジェクト情報
-- **名前**: ${analysis.projectName}
-- **言語**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
-- **フレームワーク**: ${analysis.stack.framework}
-- **テストフレームワーク**: ${analysis.stack.testFramework}
-- **プロジェクト構造**: ${analysis.patterns.structure.type}
-- **ソースディレクトリ**: ${analysis.patterns.structure.sourceDir}
+## Project Information
+- **Name**: ${analysis.projectName}
+- **Language**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
+- **Framework**: ${analysis.stack.framework}
+- **Test Framework**: ${analysis.stack.testFramework}
+- **Project Structure**: ${analysis.patterns.structure.type}
+- **Source Directory**: ${analysis.patterns.structure.sourceDir}
 
-## プロジェクトのルール・規約
-${existingRules.length > 0 ? existingRules.map(r => `- ${r}`).join('\n') : '特になし'}
+## Project Rules/Conventions
+${existingRules.length > 0 ? existingRules.map(r => `- ${r}`).join('\n') : 'None specified'}
 
-## プロジェクトの慣習
-${conventions.length > 0 ? conventions.map(c => `- ${c}`).join('\n') : '特になし'}
+## Project Practices
+${conventions.length > 0 ? conventions.map(c => `- ${c}`).join('\n') : 'None specified'}
 
-## 要件
+## Requirements
 
-1. このプロジェクト専用にパーソナライズされたエージェントを生成すること
-2. プロジェクトの言語・フレームワーク・構造に特化した具体的な指示を含めること
-3. プロジェクトのルールや規約を遵守するよう指示を含めること
-4. エージェントの役割、できること、制約を明確に記述すること
-5. 汎用的な説明ではなく、このプロジェクトでの具体的なユースケースを含めること
+1. Generate an agent PERSONALIZED for this specific project
+2. Include specific instructions tailored to the project's language, framework, and structure
+3. Include instructions to follow the project's rules and conventions
+4. Clearly describe the agent's role, capabilities, and constraints
+5. Include concrete use cases specific to this project, not generic examples
 
-## 出力形式
+## Output Format
 
-以下の構造でMarkdownを出力してください:
+Output Markdown with the following structure:
 
 \`\`\`markdown
-# {エージェント名}
+# {Agent Name}
 
-{一行での説明}
+{One-line description}
 
-## 役割
+## Role
 
-{このエージェントが担当する具体的な役割}
+{Specific role this agent handles}
 
-## 専門領域
+## Expertise
 
-{このプロジェクトにおける専門領域の詳細}
+{Detailed expertise in context of this project}
 
-## 指示
+## Instructions
 
-{このエージェントへの具体的な指示。プロジェクト固有のルールを含む}
+{Specific instructions for this agent, including project-specific rules}
 
-## 制約
+## Constraints
 
-{このエージェントがやってはいけないこと}
+{What this agent should NOT do}
 
-## 使用例
+## Usage Examples
 
-{具体的な使用例やプロンプト例}
+{Concrete examples and prompts for using this agent}
 \`\`\`
 
-Markdownのみを出力してください。`;
+Output ONLY the Markdown content.`;
 }
 
 // ============================================
