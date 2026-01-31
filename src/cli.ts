@@ -13,7 +13,7 @@ import { detectPatterns } from './detectors/patterns.js';
 import { detectCommands } from './detectors/commands.js';
 import { detectProjectDocuments } from './detectors/documents.js';
 import { generateClaudeMd } from './generator.js';
-import { suggestAgents, generateAgents, type AgentSuggestion } from './agent-generator.js';
+import { suggestAgents, generateAgent, type AgentSuggestion, type GeneratedAgent } from './agent-generator.js';
 import { isClaudeAvailable, type OutputLanguage } from './claude-bridge.js';
 
 const REASON_LABEL: Record<OutputLanguage, string> = {
@@ -294,14 +294,32 @@ async function runTransform(options: TransformOptions) {
   const outputDir = options.outputDir || docs.agentDirectory || '.agents';
   console.log(chalk.gray(`\nOutput directory: ${outputDir}/`));
 
-  // Step 6: Generate agents
+  // Step 6: Generate agents with progress
   console.log(chalk.cyan('\n🔱 Generating agents...\n'));
 
-  const agents = generateAgents(selectedSuggestions, analysis, docs, {
-    outputDir,
-    verbose: options.verbose,
-    lang,
-  });
+  const agents: GeneratedAgent[] = [];
+  const total = selectedSuggestions.length;
+
+  for (let i = 0; i < total; i++) {
+    const suggestion = selectedSuggestions[i];
+    const progress = `[${i + 1}/${total}]`;
+    const agentSpinner = ora(`${progress} Generating ${chalk.cyan(suggestion.name)}...`).start();
+
+    try {
+      const agent = generateAgent(suggestion, analysis, docs, {
+        outputDir,
+        verbose: false, // Suppress verbose output during spinner
+        lang,
+      });
+      agents.push(agent);
+      agentSpinner.succeed(`${progress} ${chalk.cyan(suggestion.name)} generated`);
+    } catch (error) {
+      agentSpinner.fail(`${progress} Failed to generate ${suggestion.name}`);
+      if (options.verbose && error instanceof Error) {
+        console.warn(chalk.gray(`  ${error.message}`));
+      }
+    }
+  }
 
   // Dry run - just print
   if (options.dryRun) {
