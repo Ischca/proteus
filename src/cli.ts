@@ -659,12 +659,33 @@ function printSummary(result: AnalysisResult) {
 
   console.log(chalk.bold('\n📊 Analysis Summary\n'));
 
-  // Stack
-  console.log(chalk.cyan('Tech Stack:'));
-  console.log(`  Language:    ${chalk.white(stack.language)}${stack.languageVersion ? ` (${stack.languageVersion})` : ''}`);
-  console.log(`  Framework:   ${chalk.white(stack.framework)}${stack.frameworkVersion ? ` (${stack.frameworkVersion})` : ''}`);
-  console.log(`  Testing:     ${chalk.white(stack.testFramework)}`);
-  console.log(`  Package Mgr: ${chalk.white(stack.packageManager)}`);
+  // Monorepo info
+  if (stack.monorepo) {
+    console.log(chalk.cyan('📦 Monorepo:'));
+    console.log(`  Type:        ${chalk.white(stack.monorepo.type)}`);
+    console.log(`  Workspaces:  ${chalk.white(stack.monorepo.workspaces.join(', '))}`);
+    console.log('');
+  }
+
+  // Multiple stacks
+  if (stack.stacks.length > 1) {
+    console.log(chalk.cyan('Tech Stacks:'));
+    for (const s of stack.stacks) {
+      const location = s.name ? `${s.name} (${s.path})` : s.path || '.';
+      const fw = s.framework !== 'unknown' ? ` + ${s.framework}` : '';
+      console.log(`  ${chalk.white(location)}: ${chalk.yellow(s.language)}${fw}`);
+    }
+    console.log('');
+    console.log(chalk.cyan('Languages:   ') + chalk.white(stack.allLanguages.join(', ')));
+    console.log(chalk.cyan('Frameworks:  ') + chalk.white(stack.allFrameworks.filter(f => f !== 'unknown').join(', ') || 'none'));
+  } else {
+    // Single stack (original display)
+    console.log(chalk.cyan('Tech Stack:'));
+    console.log(`  Language:    ${chalk.white(stack.language)}${stack.languageVersion ? ` (${stack.languageVersion})` : ''}`);
+    console.log(`  Framework:   ${chalk.white(stack.framework)}${stack.frameworkVersion ? ` (${stack.frameworkVersion})` : ''}`);
+    console.log(`  Testing:     ${chalk.white(stack.testFramework)}`);
+    console.log(`  Package Mgr: ${chalk.white(stack.packageManager)}`);
+  }
 
   if (stack.styling) {
     console.log(`  Styling:     ${chalk.white(stack.styling)}`);

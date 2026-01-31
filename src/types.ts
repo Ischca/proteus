@@ -61,7 +61,28 @@ export type PackageManager =
   | 'composer'
   | 'unknown';
 
+// Individual stack item (for a single language/framework pair)
+export interface StackItem {
+  language: Language;
+  languageVersion?: string;
+  framework: Framework;
+  frameworkVersion?: string;
+  testFramework: TestFramework;
+  packageManager: PackageManager;
+  // Location info for monorepo support
+  path?: string;  // relative path (e.g., "apps/frontend", "packages/api")
+  name?: string;  // package name if available
+}
+
+// Monorepo workspace info
+export interface MonorepoInfo {
+  type: 'npm-workspaces' | 'yarn-workspaces' | 'pnpm-workspaces' | 'turborepo' | 'nx' | 'lerna' | 'go-workspace' | 'cargo-workspace' | null;
+  rootPath: string;
+  workspaces: string[];  // glob patterns or paths
+}
+
 export interface TechStack {
+  // Primary stack (for backwards compatibility and simple projects)
   language: Language;
   languageVersion?: string;
   framework: Framework;
@@ -71,6 +92,16 @@ export interface TechStack {
   styling?: string;
   database?: string;
   additionalTools: string[];
+
+  // Multiple stacks support
+  stacks: StackItem[];
+
+  // Monorepo info
+  monorepo?: MonorepoInfo;
+
+  // Aggregated info (all unique values across stacks)
+  allLanguages: Language[];
+  allFrameworks: Framework[];
 }
 
 // ============================================

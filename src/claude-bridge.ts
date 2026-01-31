@@ -20,6 +20,45 @@ const LANGUAGE_NAMES: Record<OutputLanguage, string> = {
   de: 'German',
 };
 
+/**
+ * Format stack information for prompts, including monorepo and multiple stacks
+ */
+function formatStackInfo(analysis: AnalysisResult): string {
+  const { stack } = analysis;
+  const lines: string[] = [];
+
+  // Monorepo info
+  if (stack.monorepo) {
+    lines.push(`- **Monorepo**: ${stack.monorepo.type}`);
+    lines.push(`- **Workspaces**: ${stack.monorepo.workspaces.join(', ')}`);
+  }
+
+  // Multiple stacks
+  if (stack.stacks.length > 1) {
+    lines.push(`- **Multiple Stacks Detected**: ${stack.stacks.length} workspaces`);
+    lines.push(`- **All Languages**: ${stack.allLanguages.join(', ')}`);
+    lines.push(`- **All Frameworks**: ${stack.allFrameworks.filter(f => f !== 'unknown').join(', ') || 'none'}`);
+    lines.push('');
+    lines.push('### Workspace Details');
+    for (const s of stack.stacks) {
+      const location = s.name ? `${s.name} (${s.path})` : s.path || '.';
+      const fw = s.framework !== 'unknown' ? ` + ${s.framework}` : '';
+      lines.push(`- **${location}**: ${s.language}${fw}, test: ${s.testFramework}, pkg: ${s.packageManager}`);
+    }
+  } else {
+    // Single stack (original format)
+    lines.push(`- **Language**: ${stack.language} ${stack.languageVersion || ''}`);
+    lines.push(`- **Framework**: ${stack.framework}${stack.frameworkVersion ? ' ' + stack.frameworkVersion : ''}`);
+    lines.push(`- **Test Framework**: ${stack.testFramework}`);
+    lines.push(`- **Package Manager**: ${stack.packageManager}`);
+  }
+
+  // Common info
+  lines.push(`- **Additional Tools**: ${stack.additionalTools.join(', ') || 'none'}`);
+
+  return lines.join('\n');
+}
+
 export interface AgentSuggestion {
   name: string;
   description: string;
@@ -159,11 +198,7 @@ ${suggestNote}
 
 - **Name**: ${analysis.projectName}
 - **Description**: ${analysis.description || 'Not specified'}
-- **Language**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
-- **Framework**: ${analysis.stack.framework}${analysis.stack.frameworkVersion ? ' ' + analysis.stack.frameworkVersion : ''}
-- **Test Framework**: ${analysis.stack.testFramework}
-- **Package Manager**: ${analysis.stack.packageManager}
-- **Additional Tools**: ${analysis.stack.additionalTools.join(', ') || 'none'}
+${formatStackInfo(analysis)}
 - **Project Structure**: ${analysis.patterns.structure.type}
 - **Source Directory**: ${analysis.patterns.structure.sourceDir}
 - **Test Directory**: ${analysis.patterns.structure.testDir || 'same as source'}
@@ -230,11 +265,7 @@ function buildClaudeMdPrompt(analysis: AnalysisResult, documents: ProjectDocumen
 
 - **Name**: ${analysis.projectName}
 - **Description**: ${analysis.description || 'Unknown'}
-- **Language**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
-- **Framework**: ${analysis.stack.framework} ${analysis.stack.frameworkVersion || ''}
-- **Test Framework**: ${analysis.stack.testFramework}
-- **Package Manager**: ${analysis.stack.packageManager}
-- **Additional Tools**: ${analysis.stack.additionalTools.join(', ') || 'none'}
+${formatStackInfo(analysis)}
 
 ## Project Structure
 - Type: ${analysis.patterns.structure.type}
@@ -293,10 +324,7 @@ function buildAgentPrompt(
 ### Basic Info
 - **Project**: ${analysis.projectName}
 - **Description**: ${analysis.description || 'Not specified'}
-- **Language**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
-- **Framework**: ${analysis.stack.framework}${analysis.stack.frameworkVersion ? ' ' + analysis.stack.frameworkVersion : ''}
-- **Test Framework**: ${analysis.stack.testFramework}
-- **Package Manager**: ${analysis.stack.packageManager}
+${formatStackInfo(analysis)}
 
 ### Project Structure
 - **Type**: ${analysis.patterns.structure.type}
