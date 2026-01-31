@@ -290,8 +290,8 @@ async function runTransform(options: TransformOptions) {
     }
   }
 
-  // Step 5: Determine output directory
-  const outputDir = options.outputDir || docs.agentDirectory || '.agents';
+  // Step 5: Determine output directory (default: .claude/agents for Claude Code compatibility)
+  const outputDir = options.outputDir || docs.agentDirectory || '.claude/agents';
   console.log(chalk.gray(`\nOutput directory: ${outputDir}/`));
 
   // Step 6: Generate agents with progress

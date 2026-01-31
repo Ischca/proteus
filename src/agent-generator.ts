@@ -64,7 +64,7 @@ export function generateAgent(
   documents: ProjectDocuments,
   options: AgentGeneratorOptions = {}
 ): GeneratedAgent {
-  const outputDir = options.outputDir || '.agents';
+  const outputDir = options.outputDir || '.claude/agents';
 
   if (!isClaudeAvailable()) {
     if (options.verbose) {
