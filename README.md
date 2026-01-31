@@ -1,5 +1,9 @@
 # 🔱 Proteus
 
+[![npm version](https://img.shields.io/npm/v/agent-proteus.svg)](https://www.npmjs.com/package/agent-proteus)
+[![npm downloads](https://img.shields.io/npm/dm/agent-proteus.svg)](https://www.npmjs.com/package/agent-proteus)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > Shape-shifting project intelligence for Claude Code
 
 Proteus analyzes your project and generates **project-specific agents** — specialized AI assistants that understand your codebase's language, framework, conventions, and rules.
