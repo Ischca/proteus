@@ -1,8 +1,250 @@
-import type { AnalysisResult, AgentType, GeneratedAgent } from './types.js';
+import type { AnalysisResult } from './types.js';
 import type { ProjectDocuments } from './detectors/documents.js';
+import {
+  isClaudeAvailable,
+  suggestAgents as claudeSuggestAgents,
+  generateAgentContent as claudeGenerateAgent,
+  type AgentSuggestion,
+} from './claude-bridge.js';
+
+export interface GeneratedAgent {
+  name: string;
+  description: string;
+  content: string;
+  path: string;
+}
+
+export interface AgentGeneratorOptions {
+  outputDir?: string;
+  verbose?: boolean;
+}
+
+// Re-export for convenience
+export type { AgentSuggestion } from './claude-bridge.js';
+
+/**
+ * Get agent suggestions from Claude Code based on project analysis
+ */
+export function suggestAgents(
+  analysis: AnalysisResult,
+  documents: ProjectDocuments,
+  options: AgentGeneratorOptions = {}
+): AgentSuggestion[] {
+  if (!isClaudeAvailable()) {
+    if (options.verbose) {
+      console.log('⚠️ Claude Codeが利用できないため、デフォルトの提案を使用します');
+    }
+    return getDefaultSuggestions(analysis);
+  }
+
+  try {
+    if (options.verbose) {
+      console.log('🤖 Claude Codeにエージェント候補を問い合わせ中...');
+    }
+    return claudeSuggestAgents(analysis, documents, { verbose: options.verbose });
+  } catch (error) {
+    if (options.verbose) {
+      console.warn('⚠️ Claude Code呼び出しに失敗、デフォルトの提案を使用します');
+      if (error instanceof Error) {
+        console.warn(`  詳細: ${error.message}`);
+      }
+    }
+    return getDefaultSuggestions(analysis);
+  }
+}
+
+/**
+ * Generate a single agent using Claude Code
+ */
+export function generateAgent(
+  suggestion: AgentSuggestion,
+  analysis: AnalysisResult,
+  documents: ProjectDocuments,
+  options: AgentGeneratorOptions = {}
+): GeneratedAgent {
+  const outputDir = options.outputDir || '.agents';
+
+  if (!isClaudeAvailable()) {
+    if (options.verbose) {
+      console.log(`⚠️ Claude Codeが利用できないため、${suggestion.name}のフォールバックを使用します`);
+    }
+    return {
+      name: suggestion.name,
+      description: suggestion.description,
+      content: generateFallbackAgent(suggestion, analysis, documents),
+      path: `${outputDir}/${suggestion.name}.md`,
+    };
+  }
+
+  try {
+    if (options.verbose) {
+      console.log(`🤖 ${suggestion.name} エージェントを生成中...`);
+    }
+    const content = claudeGenerateAgent(
+      suggestion.name,
+      suggestion.description,
+      analysis,
+      documents,
+      { verbose: options.verbose }
+    );
+
+    return {
+      name: suggestion.name,
+      description: suggestion.description,
+      content,
+      path: `${outputDir}/${suggestion.name}.md`,
+    };
+  } catch (error) {
+    if (options.verbose) {
+      console.warn(`⚠️ ${suggestion.name}の生成に失敗、フォールバックを使用します`);
+      if (error instanceof Error) {
+        console.warn(`  詳細: ${error.message}`);
+      }
+    }
+    return {
+      name: suggestion.name,
+      description: suggestion.description,
+      content: generateFallbackAgent(suggestion, analysis, documents),
+      path: `${outputDir}/${suggestion.name}.md`,
+    };
+  }
+}
+
+/**
+ * Generate multiple agents
+ */
+export function generateAgents(
+  suggestions: AgentSuggestion[],
+  analysis: AnalysisResult,
+  documents: ProjectDocuments,
+  options: AgentGeneratorOptions = {}
+): GeneratedAgent[] {
+  return suggestions.map(suggestion =>
+    generateAgent(suggestion, analysis, documents, options)
+  );
+}
 
 // ============================================
-// Formatting Helpers
+// Fallback Functions (when Claude is not available)
+// ============================================
+
+function getDefaultSuggestions(analysis: AnalysisResult): AgentSuggestion[] {
+  const suggestions: AgentSuggestion[] = [];
+  const { stack } = analysis;
+
+  // Code reviewer - always useful
+  suggestions.push({
+    name: 'code-reviewer',
+    description: `${formatLanguage(stack.language)}コードのレビュー専門エージェント`,
+    focus: 'コード品質、ベストプラクティス、セキュリティ',
+    reason: 'コードレビューは全てのプロジェクトで有効',
+  });
+
+  // Test writer - if test framework exists
+  if (stack.testFramework !== 'unknown') {
+    suggestions.push({
+      name: 'test-writer',
+      description: `${formatTestFramework(stack.testFramework)}でのテスト作成専門エージェント`,
+      focus: 'ユニットテスト、統合テスト、テストカバレッジ',
+      reason: `${formatTestFramework(stack.testFramework)}が検出されたため`,
+    });
+  }
+
+  // Framework-specific agents
+  if (stack.framework !== 'unknown') {
+    if (['react', 'vue', 'svelte', 'angular'].includes(stack.framework)) {
+      suggestions.push({
+        name: 'component-builder',
+        description: `${formatFramework(stack.framework)}コンポーネント設計専門エージェント`,
+        focus: 'コンポーネント設計、状態管理、パフォーマンス',
+        reason: `${formatFramework(stack.framework)}プロジェクトのため`,
+      });
+    } else if (['express', 'fastify', 'nestjs', 'fastapi', 'gin'].includes(stack.framework)) {
+      suggestions.push({
+        name: 'api-designer',
+        description: `${formatFramework(stack.framework)} APIエンドポイント設計専門エージェント`,
+        focus: 'API設計、バリデーション、エラーハンドリング',
+        reason: `${formatFramework(stack.framework)}バックエンドプロジェクトのため`,
+      });
+    }
+  }
+
+  // Docs writer
+  suggestions.push({
+    name: 'docs-writer',
+    description: 'ドキュメント作成専門エージェント',
+    focus: 'README、APIドキュメント、コメント',
+    reason: 'ドキュメントは全てのプロジェクトで重要',
+  });
+
+  // Refactorer
+  suggestions.push({
+    name: 'refactorer',
+    description: `${formatLanguage(stack.language)}リファクタリング専門エージェント`,
+    focus: 'コード改善、設計パターン、技術的負債の解消',
+    reason: 'コードの継続的改善に有効',
+  });
+
+  return suggestions.slice(0, 5); // Max 5 suggestions
+}
+
+function generateFallbackAgent(
+  suggestion: AgentSuggestion,
+  analysis: AnalysisResult,
+  documents: ProjectDocuments
+): string {
+  const { stack, patterns, projectName } = analysis;
+  const rules = documents.claudeMd?.rules || [];
+  const conventions = documents.claudeMd?.conventions || [];
+
+  const lines: string[] = [];
+
+  lines.push(`# ${suggestion.name}`);
+  lines.push('');
+  lines.push(`> ${suggestion.description}`);
+  lines.push('');
+  lines.push('## 役割');
+  lines.push('');
+  lines.push(`${projectName}プロジェクトにおける${suggestion.focus}を担当します。`);
+  lines.push('');
+  lines.push('## プロジェクト情報');
+  lines.push('');
+  lines.push(`- **言語**: ${formatLanguage(stack.language)}${stack.languageVersion ? ` ${stack.languageVersion}` : ''}`);
+  if (stack.framework !== 'unknown') {
+    lines.push(`- **フレームワーク**: ${formatFramework(stack.framework)}`);
+  }
+  if (stack.testFramework !== 'unknown') {
+    lines.push(`- **テスト**: ${formatTestFramework(stack.testFramework)}`);
+  }
+  lines.push(`- **構造**: ${patterns.structure.type}`);
+  lines.push('');
+
+  if (rules.length > 0 || conventions.length > 0) {
+    lines.push('## プロジェクトルール');
+    lines.push('');
+    lines.push('以下のルールを遵守してください:');
+    lines.push('');
+    [...rules, ...conventions].forEach(rule => {
+      lines.push(`- ${rule}`);
+    });
+    lines.push('');
+  }
+
+  lines.push('## 指示');
+  lines.push('');
+  lines.push(`このエージェントは${suggestion.focus}に特化しています。`);
+  lines.push(`${formatLanguage(stack.language)}のベストプラクティスに従ってください。`);
+  lines.push('');
+
+  lines.push('---');
+  lines.push('');
+  lines.push('*Generated by Proteus (fallback mode)*');
+
+  return lines.join('\n');
+}
+
+// ============================================
+// Helpers
 // ============================================
 
 function formatLanguage(lang: string): string {
@@ -44,421 +286,16 @@ function formatFramework(fw: string): string {
   return map[fw] || fw;
 }
 
-// ============================================
-// Agent Templates
-// ============================================
-
-function generateCodeReviewer(
-  analysis: AnalysisResult,
-  docs: ProjectDocuments
-): string {
-  const { projectName, stack, patterns, commands } = analysis;
-  const lines: string[] = [];
-
-  // Header
-  lines.push(`# ${projectName} - Code Reviewer`);
-  lines.push('');
-  lines.push('あなたはこのプロジェクト専属のコードレビュアーです。');
-  lines.push('');
-
-  // Project Context
-  lines.push('## プロジェクト情報');
-  lines.push('');
-  lines.push(`- **言語**: ${formatLanguage(stack.language)}${stack.languageVersion ? ` ${stack.languageVersion}` : ''}`);
-  if (stack.framework !== 'unknown') {
-    lines.push(`- **フレームワーク**: ${formatFramework(stack.framework)}${stack.frameworkVersion ? ` ${stack.frameworkVersion}` : ''}`);
-  }
-  if (stack.testFramework !== 'unknown') {
-    lines.push(`- **テスト**: ${stack.testFramework}`);
-  }
-  if (stack.styling) {
-    lines.push(`- **スタイリング**: ${stack.styling}`);
-  }
-  if (stack.database) {
-    lines.push(`- **データベース/ORM**: ${stack.database}`);
-  }
-  lines.push('');
-
-  // Project Structure
-  lines.push('## プロジェクト構造');
-  lines.push('');
-  lines.push(`- ソースディレクトリ: \`${patterns.structure.sourceDir}/\``);
-  if (patterns.structure.testDir) {
-    lines.push(`- テストディレクトリ: \`${patterns.structure.testDir}/\``);
-  }
-  if (patterns.structure.keyDirectories.length > 0) {
-    lines.push('- 主要ディレクトリ:');
-    for (const dir of patterns.structure.keyDirectories) {
-      lines.push(`  - \`${dir.path}/\`: ${dir.purpose}`);
-    }
-  }
-  lines.push('');
-
-  // Rules from CLAUDE.md
-  if (docs.claudeMd) {
-    if (docs.claudeMd.rules.length > 0) {
-      lines.push('## プロジェクト固有のルール');
-      lines.push('');
-      lines.push('このプロジェクトでは以下のルールが定められています:');
-      lines.push('');
-      for (const rule of docs.claudeMd.rules) {
-        lines.push(`- ${rule}`);
-      }
-      lines.push('');
-    }
-
-    if (docs.claudeMd.mustDo.length > 0) {
-      lines.push('### 必須事項');
-      lines.push('');
-      for (const item of docs.claudeMd.mustDo) {
-        lines.push(`- ${item}`);
-      }
-      lines.push('');
-    }
-
-    if (docs.claudeMd.prefer.length > 0) {
-      lines.push('### 推奨事項');
-      lines.push('');
-      for (const item of docs.claudeMd.prefer) {
-        lines.push(`- ${item}`);
-      }
-      lines.push('');
-    }
-
-    if (docs.claudeMd.conventions.length > 0) {
-      lines.push('## コーディング規約');
-      lines.push('');
-      for (const conv of docs.claudeMd.conventions) {
-        lines.push(`- ${conv}`);
-      }
-      lines.push('');
-    }
-  }
-
-  // Naming Conventions (from analysis)
-  lines.push('## 命名規則');
-  lines.push('');
-  if (patterns.naming.files.components) {
-    lines.push(`- コンポーネントファイル: ${patterns.naming.files.components}`);
-  }
-  if (patterns.naming.files.utilities) {
-    lines.push(`- ユーティリティファイル: ${patterns.naming.files.utilities}`);
-  }
-  if (patterns.naming.files.tests) {
-    lines.push(`- テストファイル: ${patterns.naming.files.tests}`);
-  }
-  lines.push(`- 関数: ${patterns.naming.code.functions}`);
-  lines.push(`- 変数: ${patterns.naming.code.variables}`);
-  lines.push(`- 定数: ${patterns.naming.code.constants}`);
-  lines.push('');
-
-  // Review Checklist
-  lines.push('## レビューチェックリスト');
-  lines.push('');
-  lines.push('コードレビュー時は以下を確認してください:');
-  lines.push('');
-  lines.push('- [ ] 命名規則に従っているか');
-  lines.push('- [ ] プロジェクトの構造に合っているか');
-
-  if (stack.language === 'typescript') {
-    lines.push('- [ ] TypeScriptの型が適切に定義されているか');
-  }
-
-  if (stack.testFramework !== 'unknown') {
-    lines.push('- [ ] テストが書かれているか');
-  }
-
-  if (commands.lint) {
-    lines.push(`- [ ] \`${commands.lint}\` が通るか`);
-  }
-
-  if (commands.typecheck) {
-    lines.push(`- [ ] \`${commands.typecheck}\` が通るか`);
-  }
-
-  // Framework specific checks
-  if (stack.framework === 'nextjs') {
-    lines.push('- [ ] App Router のベストプラクティスに従っているか');
-    lines.push('- [ ] Server/Client コンポーネントの使い分けが適切か');
-  }
-
-  if (stack.framework === 'react') {
-    lines.push('- [ ] React Hooks のルールに従っているか');
-    lines.push('- [ ] 不要な再レンダリングがないか');
-  }
-
-  if (stack.database === 'Prisma') {
-    lines.push('- [ ] N+1問題がないか');
-    lines.push('- [ ] トランザクションが適切に使われているか');
-  }
-
-  // Custom sections from CLAUDE.md
-  if (docs.claudeMd) {
-    for (const [sectionName, content] of Object.entries(docs.claudeMd.customSections)) {
-      if (content.trim()) {
-        lines.push('');
-        lines.push(`## ${sectionName}`);
-        lines.push('');
-        lines.push(content);
-      }
-    }
-  }
-
-  lines.push('');
-  lines.push('---');
-  lines.push(`*Generated by Proteus for ${projectName}*`);
-
-  return lines.join('\n');
-}
-
-function generateTestWriter(
-  analysis: AnalysisResult,
-  docs: ProjectDocuments
-): string {
-  const { projectName, stack, patterns, commands } = analysis;
-  const lines: string[] = [];
-
-  lines.push(`# ${projectName} - Test Writer`);
-  lines.push('');
-  lines.push('あなたはこのプロジェクト専属のテストライターです。');
-  lines.push('');
-
-  lines.push('## プロジェクト情報');
-  lines.push('');
-  lines.push(`- **言語**: ${formatLanguage(stack.language)}`);
-  if (stack.framework !== 'unknown') {
-    lines.push(`- **フレームワーク**: ${formatFramework(stack.framework)}`);
-  }
-  lines.push(`- **テストフレームワーク**: ${stack.testFramework}`);
-  lines.push('');
-
-  lines.push('## テストファイルの配置');
-  lines.push('');
-  if (patterns.structure.testDir) {
-    lines.push(`テストは \`${patterns.structure.testDir}/\` に配置してください。`);
-  } else {
-    lines.push('テストはソースファイルと同じディレクトリに配置してください（colocate）。');
-  }
-  if (patterns.naming.files.tests) {
-    lines.push(`テストファイル名: ${patterns.naming.files.tests}`);
-  }
-  lines.push('');
-
-  if (commands.test) {
-    lines.push('## テストの実行');
-    lines.push('');
-    lines.push('```bash');
-    lines.push(commands.test);
-    lines.push('```');
-    lines.push('');
-  }
-
-  // Rules from CLAUDE.md
-  if (docs.claudeMd?.rules.length) {
-    lines.push('## プロジェクト固有のルール');
-    lines.push('');
-    for (const rule of docs.claudeMd.rules) {
-      lines.push(`- ${rule}`);
-    }
-    lines.push('');
-  }
-
-  lines.push('## テスト作成のガイドライン');
-  lines.push('');
-
-  if (stack.testFramework === 'vitest' || stack.testFramework === 'jest') {
-    lines.push('- `describe` でテストをグループ化');
-    lines.push('- `it` / `test` で個別のテストケースを記述');
-    lines.push('- `expect` でアサーションを行う');
-  }
-
-  if (stack.framework === 'react' || stack.framework === 'nextjs') {
-    lines.push('- React Testing Library を使用してコンポーネントをテスト');
-    lines.push('- ユーザー操作をシミュレートしてテスト');
-  }
-
-  lines.push('');
-  lines.push('---');
-  lines.push(`*Generated by Proteus for ${projectName}*`);
-
-  return lines.join('\n');
-}
-
-function generateRefactorer(
-  analysis: AnalysisResult,
-  docs: ProjectDocuments
-): string {
-  const { projectName, stack, patterns } = analysis;
-  const lines: string[] = [];
-
-  lines.push(`# ${projectName} - Refactorer`);
-  lines.push('');
-  lines.push('あなたはこのプロジェクト専属のリファクタリング担当です。');
-  lines.push('');
-
-  lines.push('## プロジェクト情報');
-  lines.push('');
-  lines.push(`- **言語**: ${formatLanguage(stack.language)}`);
-  if (stack.framework !== 'unknown') {
-    lines.push(`- **フレームワーク**: ${formatFramework(stack.framework)}`);
-  }
-  lines.push('');
-
-  lines.push('## プロジェクト構造');
-  lines.push('');
-  lines.push(`このプロジェクトは **${patterns.structure.type}** 構造を採用しています。`);
-  lines.push('');
-  if (patterns.structure.keyDirectories.length > 0) {
-    for (const dir of patterns.structure.keyDirectories) {
-      lines.push(`- \`${dir.path}/\`: ${dir.purpose}`);
-    }
-    lines.push('');
-  }
-
-  // Rules from CLAUDE.md
-  if (docs.claudeMd?.rules.length) {
-    lines.push('## プロジェクト固有のルール');
-    lines.push('');
-    for (const rule of docs.claudeMd.rules) {
-      lines.push(`- ${rule}`);
-    }
-    lines.push('');
-  }
-
-  lines.push('## リファクタリング時の注意');
-  lines.push('');
-  lines.push('- 既存の命名規則を維持すること');
-  lines.push('- プロジェクト構造を崩さないこと');
-  lines.push('- 既存のテストが通ることを確認すること');
-
-  if (patterns.imports?.style) {
-    lines.push(`- インポートは ${patterns.imports.style} スタイルを使用`);
-  }
-
-  if (patterns.exports?.style) {
-    lines.push(`- エクスポートは ${patterns.exports.style} スタイルを使用`);
-  }
-
-  lines.push('');
-  lines.push('---');
-  lines.push(`*Generated by Proteus for ${projectName}*`);
-
-  return lines.join('\n');
-}
-
-function generateDocsWriter(
-  analysis: AnalysisResult,
-  docs: ProjectDocuments
-): string {
-  const { projectName, stack } = analysis;
-  const lines: string[] = [];
-
-  lines.push(`# ${projectName} - Documentation Writer`);
-  lines.push('');
-  lines.push('あなたはこのプロジェクト専属のドキュメントライターです。');
-  lines.push('');
-
-  lines.push('## プロジェクト情報');
-  lines.push('');
-  lines.push(`- **言語**: ${formatLanguage(stack.language)}`);
-  if (stack.framework !== 'unknown') {
-    lines.push(`- **フレームワーク**: ${formatFramework(stack.framework)}`);
-  }
-  lines.push('');
-
-  if (docs.readme) {
-    lines.push('## 既存のREADME');
-    lines.push('');
-    lines.push(`現在のプロジェクト説明: ${docs.readme.description || '(なし)'}`);
-    lines.push('');
-  }
-
-  // Rules from CLAUDE.md
-  if (docs.claudeMd?.rules.length) {
-    lines.push('## プロジェクト固有のルール');
-    lines.push('');
-    for (const rule of docs.claudeMd.rules) {
-      lines.push(`- ${rule}`);
-    }
-    lines.push('');
-  }
-
-  lines.push('## ドキュメント作成のガイドライン');
-  lines.push('');
-  lines.push('- 明確で簡潔な文章を心がける');
-  lines.push('- コード例を適切に含める');
-  lines.push('- 日本語で記述する（特に指定がない場合）');
-
-  lines.push('');
-  lines.push('---');
-  lines.push(`*Generated by Proteus for ${projectName}*`);
-
-  return lines.join('\n');
-}
-
-// ============================================
-// Main Generator Function
-// ============================================
-
-export function generateAgent(
-  type: AgentType,
-  analysis: AnalysisResult,
-  docs: ProjectDocuments
-): GeneratedAgent {
-  let content: string;
-  let name: string;
-
-  switch (type) {
-    case 'code-reviewer':
-      name = 'code-reviewer';
-      content = generateCodeReviewer(analysis, docs);
-      break;
-    case 'test-writer':
-      name = 'test-writer';
-      content = generateTestWriter(analysis, docs);
-      break;
-    case 'refactorer':
-      name = 'refactorer';
-      content = generateRefactorer(analysis, docs);
-      break;
-    case 'docs-writer':
-      name = 'docs-writer';
-      content = generateDocsWriter(analysis, docs);
-      break;
-    default:
-      throw new Error(`Unknown agent type: ${type}`);
-  }
-
-  return {
-    type,
-    name,
-    path: `${name}.md`,
-    content,
+function formatTestFramework(tf: string): string {
+  const map: Record<string, string> = {
+    jest: 'Jest',
+    vitest: 'Vitest',
+    mocha: 'Mocha',
+    pytest: 'pytest',
+    'go-test': 'Go testing',
+    rspec: 'RSpec',
+    junit: 'JUnit',
+    phpunit: 'PHPUnit',
   };
-}
-
-export function generateAgents(
-  types: AgentType[],
-  analysis: AnalysisResult,
-  docs: ProjectDocuments
-): GeneratedAgent[] {
-  return types.map(type => generateAgent(type, analysis, docs));
-}
-
-// ============================================
-// Auto-select agents based on project
-// ============================================
-
-export function selectRecommendedAgents(analysis: AnalysisResult): AgentType[] {
-  const agents: AgentType[] = ['code-reviewer']; // Always recommend
-
-  if (analysis.stack.testFramework !== 'unknown') {
-    agents.push('test-writer');
-  }
-
-  // Add more based on project characteristics
-  agents.push('refactorer');
-  agents.push('docs-writer');
-
-  return agents;
+  return map[tf] || tf;
 }

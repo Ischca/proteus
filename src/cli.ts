@@ -13,14 +13,28 @@ import { detectPatterns } from './detectors/patterns.js';
 import { detectCommands } from './detectors/commands.js';
 import { detectProjectDocuments } from './detectors/documents.js';
 import { generateClaudeMd } from './generator.js';
-import { generateAgents, selectRecommendedAgents } from './agent-generator.js';
-import type { AnalysisResult, CLIOptions, GeneratorOptions, AgentType, TransformOptions } from './types.js';
+import { suggestAgents, generateAgents, type AgentSuggestion } from './agent-generator.js';
+import { isClaudeAvailable } from './claude-bridge.js';
+import type { AnalysisResult, CLIOptions, GeneratorOptions } from './types.js';
 
 // Read version from package.json
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgPath = path.join(__dirname, '..', 'package.json');
 const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf-8'));
 const VERSION = pkg.version;
+
+// ============================================
+// Types
+// ============================================
+
+interface TransformOptions {
+  outputDir?: string;
+  dryRun: boolean;
+  force: boolean;
+  interactive: boolean;
+  includeClaudeMd: boolean;
+  verbose: boolean;
+}
 
 // ============================================
 // ASCII Art Logo
@@ -130,7 +144,16 @@ async function runTransform(options: TransformOptions) {
 
   const cwd = process.cwd();
 
-  console.log(chalk.gray(`\nAnalyzing ${cwd}...\n`));
+  // Check Claude Code availability
+  const claudeAvailable = isClaudeAvailable();
+  if (claudeAvailable) {
+    console.log(chalk.green('✓ Claude Code detected - using AI-powered generation\n'));
+  } else {
+    console.log(chalk.yellow('⚠ Claude Code not found - using fallback templates\n'));
+    console.log(chalk.gray('  Install Claude Code for better results: https://claude.ai/code\n'));
+  }
+
+  console.log(chalk.gray(`Analyzing ${cwd}...\n`));
 
   // Step 1: Analyze project
   const analysis = await analyze(cwd);
@@ -152,25 +175,68 @@ async function runTransform(options: TransformOptions) {
   // Print summary
   printSummary(analysis);
 
-  // Step 3: Select agents to generate
-  let agentTypes: AgentType[] = options.agents;
+  // Step 3: Get agent suggestions from Claude Code
+  console.log(chalk.cyan('\n🤖 Generating agent suggestions...\n'));
 
-  if (agentTypes.length === 0) {
-    // Auto-select based on project
-    agentTypes = selectRecommendedAgents(analysis);
+  const suggestions = suggestAgents(analysis, docs, { verbose: options.verbose });
+
+  if (suggestions.length === 0) {
+    console.log(chalk.yellow('No agent suggestions available'));
+    return;
   }
 
-  console.log(chalk.cyan('\nAgents to generate:'));
-  for (const type of agentTypes) {
-    console.log(`  - ${chalk.white(type)}`);
+  // Step 4: Interactive selection
+  let selectedSuggestions: AgentSuggestion[];
+
+  if (options.interactive && !options.force) {
+    console.log(chalk.bold('Recommended agents for this project:\n'));
+
+    for (let i = 0; i < suggestions.length; i++) {
+      const s = suggestions[i];
+      console.log(`  ${chalk.cyan(`${i + 1}.`)} ${chalk.bold(s.name)}`);
+      console.log(`     ${chalk.white(s.description)}`);
+      console.log(`     ${chalk.gray(`理由: ${s.reason}`)}`);
+      console.log('');
+    }
+
+    const { selected } = await prompts({
+      type: 'multiselect',
+      name: 'selected',
+      message: 'Select agents to generate',
+      choices: suggestions.map((s, i) => ({
+        title: `${s.name} - ${s.description}`,
+        value: i,
+        selected: true, // All selected by default
+      })),
+      hint: '- Space to toggle, Enter to confirm',
+    });
+
+    if (!selected || selected.length === 0) {
+      console.log(chalk.gray('No agents selected. Cancelled.'));
+      return;
+    }
+
+    selectedSuggestions = selected.map((i: number) => suggestions[i]);
+  } else {
+    // Non-interactive: use all suggestions
+    selectedSuggestions = suggestions;
+    console.log(chalk.cyan('Agents to generate:'));
+    for (const s of selectedSuggestions) {
+      console.log(`  - ${chalk.white(s.name)}: ${s.description}`);
+    }
   }
 
-  // Step 4: Determine output directory
+  // Step 5: Determine output directory
   const outputDir = options.outputDir || docs.agentDirectory || '.agents';
   console.log(chalk.gray(`\nOutput directory: ${outputDir}/`));
 
-  // Step 5: Generate agents
-  const agents = generateAgents(agentTypes, analysis, docs);
+  // Step 6: Generate agents
+  console.log(chalk.cyan('\n🔱 Generating agents...\n'));
+
+  const agents = generateAgents(selectedSuggestions, analysis, docs, {
+    outputDir,
+    verbose: options.verbose,
+  });
 
   // Dry run - just print
   if (options.dryRun) {
@@ -183,15 +249,8 @@ async function runTransform(options: TransformOptions) {
     return;
   }
 
-  // Interactive confirmation
+  // Confirmation
   if (options.interactive && !options.force) {
-    console.log(chalk.gray('\n--- Preview ---\n'));
-    for (const agent of agents) {
-      console.log(chalk.bold(`${agent.name}.md`));
-      console.log(agent.content.split('\n').slice(0, 10).join('\n'));
-      console.log(chalk.gray('...\n'));
-    }
-
     const { confirm } = await prompts({
       type: 'confirm',
       name: 'confirm',
@@ -211,9 +270,9 @@ async function runTransform(options: TransformOptions) {
 
   // Save agents
   for (const agent of agents) {
-    const filePath = path.join(fullOutputDir, agent.path);
+    const filePath = path.join(fullOutputDir, `${agent.name}.md`);
     await fs.writeFile(filePath, agent.content);
-    console.log(chalk.green(`✅ Created ${outputDir}/${agent.path}`));
+    console.log(chalk.green(`✅ Created ${outputDir}/${agent.name}.md`));
   }
 
   // Optionally generate CLAUDE.md
@@ -224,7 +283,7 @@ async function runTransform(options: TransformOptions) {
       includeComments: true,
       version: VERSION,
     };
-    const claudeContent = generateClaudeMd(analysis, generatorOptions);
+    const claudeContent = generateClaudeMd(analysis, { ...generatorOptions, documents: docs, verbose: options.verbose });
     await fs.writeFile(path.join(cwd, 'CLAUDE.md'), claudeContent);
     console.log(chalk.green('✅ Created CLAUDE.md'));
   }
@@ -276,11 +335,11 @@ async function runInit(options: CLIOptions) {
 
       if (action === 'transform') {
         await runTransform({
-          agents: [],
           dryRun: options.dryRun,
           force: options.force,
           interactive: options.interactive,
           includeClaudeMd: false,
+          verbose: false,
         });
         return;
       }
@@ -294,6 +353,7 @@ async function runInit(options: CLIOptions) {
   console.log(chalk.gray(`\nAnalyzing ${cwd}...\n`));
 
   const result = await analyze(cwd);
+  const docs = await detectProjectDocuments(cwd);
 
   // Print summary
   printSummary(result);
@@ -306,7 +366,7 @@ async function runInit(options: CLIOptions) {
     version: VERSION,
   };
 
-  const content = generateClaudeMd(result, generatorOptions);
+  const content = generateClaudeMd(result, { ...generatorOptions, documents: docs });
 
   // Dry run - just print
   if (options.dryRun) {
@@ -340,7 +400,7 @@ async function runInit(options: CLIOptions) {
   console.log(chalk.green(`\n✅ Saved ${claudeMdPath}`));
 
   // Suggest transform
-  console.log(chalk.gray('\nTip: Run `proteus transform` to generate project-specific agents!'));
+  console.log(chalk.gray('\nTip: Run `proteus` to generate project-specific agents!'));
 }
 
 function printSummary(result: AnalysisResult) {
@@ -391,22 +451,22 @@ program
 // Transform command (default)
 program
   .command('transform', { isDefault: true })
-  .description('Analyze project and generate specialized agents')
-  .option('-o, --output <dir>', 'Output directory for agents', '.agents')
-  .option('-a, --agents <types...>', 'Agent types to generate (code-reviewer, test-writer, refactorer, docs-writer)')
+  .description('Analyze project and generate specialized agents (powered by Claude Code)')
+  .option('-o, --output <dir>', 'Output directory for agents')
   .option('-d, --dry-run', 'Preview without saving', false)
-  .option('-f, --force', 'Overwrite existing files without confirmation', false)
+  .option('-f, --force', 'Skip confirmations', false)
   .option('-i, --interactive', 'Interactive mode with confirmations', true)
   .option('--include-claude-md', 'Also generate CLAUDE.md if not exists', false)
+  .option('-v, --verbose', 'Verbose output', false)
   .action(async (opts) => {
     try {
       await runTransform({
-        agents: (opts.agents || []) as AgentType[],
         outputDir: opts.output,
         dryRun: opts.dryRun,
         force: opts.force,
         interactive: opts.interactive,
         includeClaudeMd: opts.includeClaudeMd,
+        verbose: opts.verbose,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);
@@ -432,19 +492,36 @@ program
     }
   });
 
-// List command
+// Analyze command (just show analysis without generating)
 program
-  .command('list')
-  .description('List available agent types')
-  .action(() => {
-    console.log(LOGO);
-    console.log(chalk.bold('Available Agent Types:\n'));
-    console.log(`  ${chalk.cyan('code-reviewer')}   - コードレビュー専門`);
-    console.log(`  ${chalk.cyan('test-writer')}     - テスト作成専門`);
-    console.log(`  ${chalk.cyan('refactorer')}      - リファクタリング専門`);
-    console.log(`  ${chalk.cyan('docs-writer')}     - ドキュメント作成専門`);
-    console.log('');
-    console.log(chalk.gray('Usage: proteus transform -a code-reviewer test-writer'));
+  .command('analyze')
+  .description('Analyze project without generating anything')
+  .action(async () => {
+    try {
+      console.log(LOGO);
+      const cwd = process.cwd();
+      console.log(chalk.gray(`Analyzing ${cwd}...\n`));
+      const result = await analyze(cwd);
+      const docs = await detectProjectDocuments(cwd);
+
+      printSummary(result);
+
+      if (docs.claudeMd) {
+        console.log(chalk.cyan('\nExisting CLAUDE.md:'));
+        console.log(`  Rules:       ${docs.claudeMd.rules.length}`);
+        console.log(`  Conventions: ${docs.claudeMd.conventions.length}`);
+      }
+
+      if (docs.existingAgents.length > 0) {
+        console.log(chalk.cyan('\nExisting Agents:'));
+        for (const agent of docs.existingAgents) {
+          console.log(`  - ${agent.name}`);
+        }
+      }
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
   });
 
 program.parse();
