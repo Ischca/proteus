@@ -221,7 +221,7 @@ function generateFull(result: AnalysisResult, options: GeneratorOptions): string
   lines.push('## Proteus Metadata');
   lines.push('');
   lines.push('```yaml');
-  lines.push('version: 0.1.0');
+  lines.push(`version: ${options.version}`);
   lines.push(`generated: ${new Date().toISOString()}`);
   lines.push(`confidence: ${Math.round(confidence.overall * 100)}%`);
   lines.push('```');

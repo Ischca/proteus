@@ -180,6 +180,7 @@ async function runInit(options: CLIOptions) {
     template: options.template,
     includeExamples: true,
     includeComments: true,
+    version: VERSION,
   };
 
   const content = generateClaudeMd(result, generatorOptions);

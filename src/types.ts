@@ -169,6 +169,7 @@ export interface GeneratorOptions {
   template: 'minimal' | 'full';
   includeExamples: boolean;
   includeComments: boolean;
+  version: string;
 }
 
 // ============================================
