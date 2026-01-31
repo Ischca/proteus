@@ -15,6 +15,8 @@ import { detectProjectDocuments } from './detectors/documents.js';
 import { generateClaudeMd } from './generator.js';
 import { suggestAgents, generateAgent, type AgentSuggestion, type GeneratedAgent } from './agent-generator.js';
 import { isClaudeAvailable, type OutputLanguage } from './claude-bridge.js';
+import { updateAgentRegistry, scanExistingAgents } from './agent-registry.js';
+import { generateProteusSkill, saveProteusSkill } from './skill-generator.js';
 
 const REASON_LABEL: Record<OutputLanguage, string> = {
   en: 'Reason',
@@ -200,8 +202,15 @@ async function runTransform(options: TransformOptions) {
     spinner.succeed('No existing CLAUDE.md found');
   }
 
-  if (docs.existingAgents.length > 0) {
-    console.log(chalk.gray(`  Found ${docs.existingAgents.length} existing agents in ${docs.agentDirectory}/`));
+  // Show existing agents and skills
+  const existingAgentCount = docs.existingAgents.filter(a => a.type === 'agent').length;
+  const existingSkillCount = docs.existingAgents.filter(a => a.type === 'skill').length;
+
+  if (existingAgentCount > 0 && docs.agentDirectory) {
+    console.log(chalk.gray(`  Found ${existingAgentCount} existing agent(s) in ${docs.agentDirectory}/`));
+  }
+  if (existingSkillCount > 0 && docs.skillDirectory) {
+    console.log(chalk.gray(`  Found ${existingSkillCount} existing skill(s) in ${docs.skillDirectory}/`));
   }
 
   // Print summary
@@ -243,12 +252,58 @@ async function runTransform(options: TransformOptions) {
 
   const suggestions = suggestAgents(analysis, docs, { verbose: options.verbose, lang });
 
+  // Handle case where no new agents are needed
   if (suggestions.length === 0) {
-    console.log(chalk.yellow('No agent suggestions available'));
-    return;
+    if (existingAgentCount > 0) {
+      console.log(chalk.green(`✓ Project already has ${existingAgentCount} agent(s) with good coverage.`));
+      console.log(chalk.gray('  No additional agents recommended.\n'));
+
+      // Still offer to generate proteus skill if agents exist
+      if (options.interactive && !options.force) {
+        const { generateSkillOnly } = await prompts({
+          type: 'confirm',
+          name: 'generateSkillOnly',
+          message: 'Generate /proteus skill to use existing agents?',
+          initial: true,
+        });
+
+        if (generateSkillOnly) {
+          const skillSpinner = ora('Generating proteus skill...').start();
+          try {
+            const existingAgentsForSkill = docs.existingAgents.filter(a => a.type === 'agent');
+            const skill = generateProteusSkill({
+              projectName: analysis.projectName,
+              agents: existingAgentsForSkill,
+              lang,
+              outputDir: '.claude/skills',
+            });
+            saveProteusSkill(skill, cwd);
+            skillSpinner.succeed('Created .claude/skills/proteus/SKILL.md');
+          } catch (error) {
+            skillSpinner.fail('Failed to generate proteus skill');
+          }
+        }
+      }
+      return;
+    } else {
+      console.log(chalk.yellow('No agent suggestions available. Try running with --verbose for details.'));
+      return;
+    }
   }
 
-  // Step 4: Interactive selection
+  // Step 4b: Check for duplicates with existing agents
+  const existingAgentNames = docs.existingAgents.filter(a => a.type === 'agent').map(a => a.name);
+  const duplicates = suggestions.filter(s => existingAgentNames.includes(s.name));
+
+  if (duplicates.length > 0) {
+    console.log(chalk.yellow(`⚠ Warning: ${duplicates.length} suggested agent(s) already exist:`));
+    for (const d of duplicates) {
+      console.log(chalk.yellow(`  - ${d.name}`));
+    }
+    console.log('');
+  }
+
+  // Step 5: Interactive selection
   let selectedSuggestions: AgentSuggestion[];
   const reasonLabel = REASON_LABEL[lang];
 
@@ -257,7 +312,12 @@ async function runTransform(options: TransformOptions) {
 
     for (let i = 0; i < suggestions.length; i++) {
       const s = suggestions[i];
-      console.log(`  ${chalk.cyan(`${i + 1}.`)} ${chalk.bold(s.name)}`);
+      const isDuplicate = existingAgentNames.includes(s.name);
+      const nameDisplay = isDuplicate
+        ? `${chalk.bold(s.name)} ${chalk.yellow('(exists)')}`
+        : chalk.bold(s.name);
+
+      console.log(`  ${chalk.cyan(`${i + 1}.`)} ${nameDisplay}`);
       console.log(`     ${chalk.white(s.description)}`);
       console.log(`     ${chalk.gray(`${reasonLabel}: ${s.reason}`)}`);
       console.log('');
@@ -267,11 +327,16 @@ async function runTransform(options: TransformOptions) {
       type: 'multiselect',
       name: 'selected',
       message: 'Select agents to generate',
-      choices: suggestions.map((s, i) => ({
-        title: `${s.name} - ${s.description}`,
-        value: i,
-        selected: true, // All selected by default
-      })),
+      choices: suggestions.map((s, i) => {
+        const isDuplicate = existingAgentNames.includes(s.name);
+        return {
+          title: isDuplicate
+            ? `${s.name} (overwrite) - ${s.description}`
+            : `${s.name} - ${s.description}`,
+          value: i,
+          selected: !isDuplicate, // Don't select duplicates by default
+        };
+      }),
       hint: '- Space to toggle, Enter to confirm',
     });
 
@@ -281,17 +346,44 @@ async function runTransform(options: TransformOptions) {
     }
 
     selectedSuggestions = selected.map((i: number) => suggestions[i]);
+
+    // Confirm overwrite for duplicates
+    const selectedDuplicates = selectedSuggestions.filter(s => existingAgentNames.includes(s.name));
+    if (selectedDuplicates.length > 0) {
+      const { confirmOverwrite } = await prompts({
+        type: 'confirm',
+        name: 'confirmOverwrite',
+        message: `Overwrite ${selectedDuplicates.length} existing agent(s)?`,
+        initial: false,
+      });
+
+      if (!confirmOverwrite) {
+        selectedSuggestions = selectedSuggestions.filter(s => !existingAgentNames.includes(s.name));
+        if (selectedSuggestions.length === 0) {
+          console.log(chalk.gray('No new agents to generate. Cancelled.'));
+          return;
+        }
+      }
+    }
   } else {
-    // Non-interactive: use all suggestions
-    selectedSuggestions = suggestions;
+    // Non-interactive: use all suggestions (skip duplicates unless --force)
+    selectedSuggestions = options.force
+      ? suggestions
+      : suggestions.filter(s => !existingAgentNames.includes(s.name));
+
+    if (selectedSuggestions.length === 0) {
+      console.log(chalk.yellow('All suggested agents already exist. Use --force to overwrite.'));
+      return;
+    }
+
     console.log(chalk.cyan('Agents to generate:'));
     for (const s of selectedSuggestions) {
       console.log(`  - ${chalk.white(s.name)}: ${s.description}`);
     }
   }
 
-  // Step 5: Determine output directory (default: .claude/agents for Claude Code compatibility)
-  const outputDir = options.outputDir || docs.agentDirectory || '.claude/agents';
+  // Step 5: Determine output directory (always .claude/agents for agents)
+  const outputDir = options.outputDir || '.claude/agents';
   console.log(chalk.gray(`\nOutput directory: ${outputDir}/`));
 
   // Step 6: Generate agents with progress
@@ -358,12 +450,101 @@ async function runTransform(options: TransformOptions) {
     console.log(chalk.green(`✅ Created ${outputDir}/${agent.name}.md`));
   }
 
+  // Step 7: Prompt to update agent registry
+  let registryUpdated = false;
+  if (options.interactive && !options.force) {
+    const { updateRegistry } = await prompts({
+      type: 'confirm',
+      name: 'updateRegistry',
+      message: 'Update agent list in CLAUDE.md or agents.md?',
+      initial: true,
+    });
+
+    if (updateRegistry) {
+      const registrySpinner = ora('Updating agent registry...').start();
+      try {
+        const result = updateAgentRegistry({
+          projectPath: cwd,
+          agentDir: outputDir,
+          lang,
+        }, selectedSuggestions);
+
+        if (result) {
+          registrySpinner.succeed(`Agent list ${result.action} in ${result.file} (${result.agentCount} agents)`);
+          registryUpdated = true;
+        } else {
+          registrySpinner.warn('Could not update agent registry');
+        }
+      } catch (error) {
+        registrySpinner.fail('Failed to update agent registry');
+        if (options.verbose && error instanceof Error) {
+          console.warn(chalk.gray(`  ${error.message}`));
+        }
+      }
+    }
+  }
+
+  // Step 8: Prompt to generate proteus skill (agent router)
+  let skillGenerated = false;
+  if (options.interactive && !options.force) {
+    const { generateSkill } = await prompts({
+      type: 'confirm',
+      name: 'generateSkill',
+      message: 'Generate /proteus skill to easily use these agents?',
+      initial: true,
+    });
+
+    if (generateSkill) {
+      const skillSpinner = ora('Generating proteus skill...').start();
+      try {
+        // Re-scan agents to include newly created ones
+        const allAgents = scanExistingAgents(fullOutputDir);
+
+        const skill = generateProteusSkill({
+          projectName: analysis.projectName,
+          agents: allAgents.map(a => ({ ...a, type: 'agent' as const, path: a.path, content: '' })),
+          lang,
+          outputDir: '.claude/skills',
+        });
+
+        // Read actual content for each agent
+        const agentsWithContent = await Promise.all(
+          allAgents.map(async (a) => {
+            const content = await fs.readFile(path.join(fullOutputDir, a.path), 'utf-8');
+            return { ...a, type: 'agent' as const, content };
+          })
+        );
+
+        const skillWithContent = generateProteusSkill({
+          projectName: analysis.projectName,
+          agents: agentsWithContent,
+          lang,
+          outputDir: '.claude/skills',
+        });
+
+        saveProteusSkill(skillWithContent, cwd);
+        skillSpinner.succeed(`Created .claude/skills/proteus/SKILL.md`);
+        skillGenerated = true;
+      } catch (error) {
+        skillSpinner.fail('Failed to generate proteus skill');
+        if (options.verbose && error instanceof Error) {
+          console.warn(chalk.gray(`  ${error.message}`));
+        }
+      }
+    }
+  }
+
   // Print next steps
   console.log(chalk.gray('\n🔱 Transformation complete!'));
   console.log(chalk.gray('\nNext steps:'));
   console.log(chalk.gray(`  1. Review agents in ${outputDir}/`));
-  console.log(chalk.gray('  2. Customize based on your needs'));
-  console.log(chalk.gray('  3. Use with Claude Code'));
+  if (skillGenerated) {
+    console.log(chalk.gray('  2. Use /proteus to route tasks to the right agent'));
+  }
+  console.log(chalk.gray(`  ${skillGenerated ? '3' : '2'}. Customize based on your needs`));
+  if (!registryUpdated) {
+    console.log(chalk.gray(`  ${skillGenerated ? '4' : '3'}. Run \`proteus registry\` to update agent list in docs`));
+  }
 }
 
 // ============================================
@@ -589,6 +770,70 @@ program
         for (const agent of docs.existingAgents) {
           console.log(`  - ${agent.name}`);
         }
+      }
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+// Registry command (update agent list in CLAUDE.md or agents.md)
+program
+  .command('registry')
+  .description('Update agent list in CLAUDE.md or agents.md')
+  .option('-a, --agent-dir <dir>', 'Agent directory', '.claude/agents')
+  .option('-f, --format <type>', 'Output format (table|list)', 'table')
+  .option('-l, --lang <code>', 'Output language (en, ja, zh, ko, es, fr, de)', 'en')
+  .option('--dry-run', 'Preview without saving', false)
+  .action(async (opts) => {
+    try {
+      console.log(LOGO);
+      const cwd = process.cwd();
+
+      // Scan existing agents
+      const agentDir = opts.agentDir || '.claude/agents';
+      const fullAgentDir = path.join(cwd, agentDir);
+
+      const spinner = ora('Scanning agents...').start();
+      const agents = scanExistingAgents(fullAgentDir);
+
+      if (agents.length === 0) {
+        spinner.warn(`No agents found in ${agentDir}/`);
+        console.log(chalk.gray('\nRun `proteus` to generate agents first.'));
+        return;
+      }
+
+      spinner.succeed(`Found ${agents.length} agent(s)`);
+
+      // List agents
+      console.log(chalk.cyan('\nAgents found:'));
+      for (const agent of agents) {
+        console.log(`  - ${chalk.white(agent.name)}`);
+        if (agent.description) {
+          console.log(`    ${chalk.gray(agent.description)}`);
+        }
+      }
+
+      if (opts.dryRun) {
+        console.log(chalk.gray('\n--- Preview (dry run) ---'));
+        const { generateAgentListSection } = await import('./agent-registry.js');
+        console.log(generateAgentListSection(agents, agentDir, opts.format, opts.lang));
+        return;
+      }
+
+      // Update registry
+      const updateSpinner = ora('Updating registry...').start();
+      const result = updateAgentRegistry({
+        projectPath: cwd,
+        agentDir,
+        format: opts.format,
+        lang: opts.lang,
+      });
+
+      if (result) {
+        updateSpinner.succeed(`Agent list ${result.action} in ${result.file} (${result.agentCount} agents)`);
+      } else {
+        updateSpinner.fail('Failed to update registry');
       }
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);

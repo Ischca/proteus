@@ -33,9 +33,11 @@ export interface ExistingAgent {
 
 export interface ProjectDocuments {
   claudeMd?: ClaudeMdContent;
+  claudeMdRawContent?: string;  // For passing full content to prompts
   readme?: ReadmeContent;
   existingAgents: ExistingAgent[];
-  agentDirectory?: string;  // 検出された既存のエージェントディレクトリ
+  agentDirectory?: string;  // 検出された既存のエージェントディレクトリ (.claude/agents)
+  skillDirectory?: string;  // 検出された既存のスキルディレクトリ (.claude/skills)
 }
 
 // ============================================
@@ -181,34 +183,39 @@ async function parseReadme(filePath: string): Promise<ReadmeContent> {
 
 async function detectExistingAgents(cwd: string): Promise<{
   agents: ExistingAgent[];
-  directory?: string;
+  agentDirectory?: string;
+  skillDirectory?: string;
 }> {
   const agents: ExistingAgent[] = [];
-  let directory: string | undefined;
+  let agentDirectory: string | undefined;
+  let skillDirectory: string | undefined;
 
-  // Check possible agent directories
+  // Check possible agent directories (agents first, then skills)
   const agentDirs = [
-    '.agents',
-    '.claude/agents',
-    '.claude/skills',
-    '.skills',
+    { path: '.claude/agents', type: 'agent' as const },
+    { path: '.agents', type: 'agent' as const },
   ];
 
+  const skillDirs = [
+    { path: '.claude/skills', type: 'skill' as const },
+    { path: '.skills', type: 'skill' as const },
+  ];
+
+  // Scan agent directories
   for (const dir of agentDirs) {
-    const fullPath = path.join(cwd, dir);
+    const fullPath = path.join(cwd, dir.path);
     try {
       const stat = await fs.stat(fullPath);
       if (stat.isDirectory()) {
-        directory = dir;
+        if (!agentDirectory) agentDirectory = dir.path;
 
-        // Find all .md files in this directory
         const files = await fg(['*.md'], {
           cwd: fullPath,
           onlyFiles: true,
         });
 
         for (const file of files) {
-          if (file.startsWith('_')) continue; // Skip config files
+          if (file.startsWith('_')) continue;
 
           const filePath = path.join(fullPath, file);
           const content = await fs.readFile(filePath, 'utf-8');
@@ -218,18 +225,54 @@ async function detectExistingAgents(cwd: string): Promise<{
             path: filePath,
             name,
             content,
-            type: dir.includes('skill') ? 'skill' : 'agent',
+            type: 'agent',
           });
         }
-
-        break; // Use first found directory
+        break;
       }
     } catch {
       // Directory doesn't exist
     }
   }
 
-  return { agents, directory };
+  // Scan skill directories
+  for (const dir of skillDirs) {
+    const fullPath = path.join(cwd, dir.path);
+    try {
+      const stat = await fs.stat(fullPath);
+      if (stat.isDirectory()) {
+        if (!skillDirectory) skillDirectory = dir.path;
+
+        const files = await fg(['*.md'], {
+          cwd: fullPath,
+          onlyFiles: true,
+        });
+
+        for (const file of files) {
+          if (file.startsWith('_') || file === 'SKILL.md') continue;
+
+          const filePath = path.join(fullPath, file);
+          const content = await fs.readFile(filePath, 'utf-8');
+          const name = path.basename(file, '.md');
+
+          // Check if it's a skill (has YAML frontmatter)
+          const isSkill = content.startsWith('---');
+
+          agents.push({
+            path: filePath,
+            name,
+            content,
+            type: isSkill ? 'skill' : 'agent',
+          });
+        }
+        break;
+      }
+    } catch {
+      // Directory doesn't exist
+    }
+  }
+
+  return { agents, agentDirectory, skillDirectory };
 }
 
 // ============================================
@@ -267,10 +310,16 @@ export async function detectProjectDocuments(cwd: string): Promise<ProjectDocume
     }
   }
 
-  // Detect existing agents
-  const { agents, directory } = await detectExistingAgents(cwd);
+  // Detect existing agents and skills
+  const { agents, agentDirectory, skillDirectory } = await detectExistingAgents(cwd);
   result.existingAgents = agents;
-  result.agentDirectory = directory;
+  result.agentDirectory = agentDirectory;
+  result.skillDirectory = skillDirectory;
+
+  // Store raw CLAUDE.md content for prompts
+  if (result.claudeMd) {
+    result.claudeMdRawContent = result.claudeMd.content;
+  }
 
   return result;
 }

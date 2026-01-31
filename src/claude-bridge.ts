@@ -119,50 +119,103 @@ export function generateAgentContent(
 
 function buildAgentSuggestionPrompt(analysis: AnalysisResult, documents: ProjectDocuments, lang: OutputLanguage): string {
   const existingRules = documents.claudeMd?.rules || [];
-  const existingAgents = documents.existingAgents.map(a => a.name).join(', ') || 'none';
+  const existingAgentsList = documents.existingAgents.filter(a => a.type === 'agent');
+  const existingAgentNames = existingAgentsList.map(a => a.name);
+  const existingAgentsStr = existingAgentNames.length > 0 ? existingAgentNames.join(', ') : 'none';
   const langName = LANGUAGE_NAMES[lang];
+  const keyDirs = analysis.patterns.structure.keyDirectories || [];
 
-  return `You are a project analysis expert. Based on the following project information, suggest 5 optimal Claude Code agents specifically tailored for this project.
+  // Calculate how many agents to suggest based on existing count
+  const existingCount = existingAgentNames.length;
+  let suggestCount: number;
+  let suggestNote: string;
+
+  if (existingCount === 0) {
+    suggestCount = 5;
+    suggestNote = 'This project has no agents yet. Suggest 5 agents to provide good coverage.';
+  } else if (existingCount <= 2) {
+    suggestCount = 3;
+    suggestNote = `This project has ${existingCount} agent(s). Suggest up to 3 MORE agents that complement the existing ones.`;
+  } else if (existingCount <= 4) {
+    suggestCount = 2;
+    suggestNote = `This project has ${existingCount} agents. Only suggest 1-2 MORE agents if there are clear gaps.`;
+  } else {
+    suggestCount = 1;
+    suggestNote = `This project already has ${existingCount} agents. Only suggest 0-1 agents if there's a critical gap. Return empty array [] if coverage is sufficient.`;
+  }
+
+  return `You are a project analysis expert. Based on the following project information, suggest Claude Code agents specifically tailored for this project.
 
 **IMPORTANT: All output text (description, focus, reason) must be in ${langName}.**
+
+## Suggestion Guidelines
+
+${suggestNote}
+
+**Maximum suggestions: ${suggestCount}**
+**If existing agents already cover the project well, return an EMPTY array: []**
 
 ## Project Information
 
 - **Name**: ${analysis.projectName}
+- **Description**: ${analysis.description || 'Not specified'}
 - **Language**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
-- **Framework**: ${analysis.stack.framework}
+- **Framework**: ${analysis.stack.framework}${analysis.stack.frameworkVersion ? ' ' + analysis.stack.frameworkVersion : ''}
 - **Test Framework**: ${analysis.stack.testFramework}
+- **Package Manager**: ${analysis.stack.packageManager}
 - **Additional Tools**: ${analysis.stack.additionalTools.join(', ') || 'none'}
 - **Project Structure**: ${analysis.patterns.structure.type}
-- **Existing Agents**: ${existingAgents}
+- **Source Directory**: ${analysis.patterns.structure.sourceDir}
+- **Test Directory**: ${analysis.patterns.structure.testDir || 'same as source'}
+
+## Key Directories
+${keyDirs.length > 0 ? keyDirs.map(d => `- \`${d.path}\`: ${d.purpose}`).join('\n') : 'Not analyzed'}
+
+## Commands
+- Build: \`${analysis.commands.build || 'N/A'}\`
+- Test: \`${analysis.commands.test || 'N/A'}\`
+- Lint: \`${analysis.commands.lint || 'N/A'}\`
+
+## Code Patterns
+- Import Style: ${analysis.patterns.imports?.style || 'mixed'}
+- Export Style: ${analysis.patterns.exports?.style || 'mixed'}
+- Naming: functions=${analysis.patterns.naming.code.functions}, types=${analysis.patterns.naming.code.types || 'PascalCase'}
 
 ## Existing Rules/Conventions
 ${existingRules.length > 0 ? existingRules.map(r => `- ${r}`).join('\n') : 'None specified'}
 
+## Existing Agents (NEVER duplicate these names)
+${existingAgentsStr}
+
 ## Requirements
 
-1. Suggest agents that are PERSONALIZED for this specific project
-2. NOT generic agents - they must be specialized for this project's language, framework, and structure
-3. Do not duplicate existing agents
-4. Include a specific role and reason why each agent is valuable for THIS project
+1. **NEVER suggest agents with same names as existing agents**
+2. **HIGHLY PERSONALIZED**: Agents must be specific to THIS project, not generic
+3. **Complementary**: New agents should fill gaps, not overlap with existing ones
+4. **Practical focus**: Each agent should address a REAL need based on the project's stack
 5. **Write all descriptions in ${langName}**
+6. **Return empty array [] if existing agents are sufficient**
+
+## What makes a GOOD agent suggestion:
+- ✅ "nextjs-app-router-optimizer" for a Next.js 14 project
+- ✅ "vitest-coverage-improver" for a project using Vitest
+- ❌ "code-reviewer" (too generic)
+- ❌ Anything that overlaps with existing agents
 
 ## Output Format (JSON)
-
-Output in the following format:
 
 \`\`\`json
 [
   {
-    "name": "agent-name-in-kebab-case",
+    "name": "specific-descriptive-name",
     "description": "One-line description in ${langName}",
     "focus": "The specific domain in ${langName}",
-    "reason": "Why valuable for this project in ${langName}"
+    "reason": "Why valuable for THIS project specifically in ${langName}"
   }
 ]
 \`\`\`
 
-Output ONLY the JSON.`;
+Output ONLY the JSON. Return [] if no new agents needed.`;
 }
 
 function buildClaudeMdPrompt(analysis: AnalysisResult, documents: ProjectDocuments, lang: OutputLanguage): string {
@@ -223,69 +276,120 @@ function buildAgentPrompt(
   const existingRules = documents.claudeMd?.rules || [];
   const conventions = documents.claudeMd?.conventions || [];
   const langName = LANGUAGE_NAMES[lang];
+  const keyDirs = analysis.patterns.structure.keyDirectories || [];
+  const existingAgentNames = documents.existingAgents.map(a => a.name);
+  const claudeMdContent = documents.claudeMd?.rawContent || '';
 
-  return `You are a Claude Code agent design expert. Based on the following information, generate a project-specific agent definition in Markdown.
+  return `You are a Claude Code agent design expert. Generate a HIGHLY PERSONALIZED agent definition for this specific project.
 
 **IMPORTANT: Write the entire agent definition in ${langName}.**
 
-## Agent Information
+## Agent to Generate
 - **Name**: ${agentName}
 - **Description**: ${agentDescription}
 
-## Project Information
-- **Name**: ${analysis.projectName}
+## Project Context
+
+### Basic Info
+- **Project**: ${analysis.projectName}
+- **Description**: ${analysis.description || 'Not specified'}
 - **Language**: ${analysis.stack.language} ${analysis.stack.languageVersion || ''}
-- **Framework**: ${analysis.stack.framework}
+- **Framework**: ${analysis.stack.framework}${analysis.stack.frameworkVersion ? ' ' + analysis.stack.frameworkVersion : ''}
 - **Test Framework**: ${analysis.stack.testFramework}
-- **Project Structure**: ${analysis.patterns.structure.type}
-- **Source Directory**: ${analysis.patterns.structure.sourceDir}
+- **Package Manager**: ${analysis.stack.packageManager}
 
-## Project Rules/Conventions
-${existingRules.length > 0 ? existingRules.map(r => `- ${r}`).join('\n') : 'None specified'}
+### Project Structure
+- **Type**: ${analysis.patterns.structure.type}
+- **Source**: \`${analysis.patterns.structure.sourceDir}\`
+- **Tests**: \`${analysis.patterns.structure.testDir || analysis.patterns.structure.sourceDir}\`
 
-## Project Practices
-${conventions.length > 0 ? conventions.map(c => `- ${c}`).join('\n') : 'None specified'}
+### Key Directories (IMPORTANT - reference these in the agent!)
+${keyDirs.length > 0 ? keyDirs.map(d => `- \`${d.path}\`: ${d.purpose}`).join('\n') : '- Standard structure'}
 
-## Requirements
+### Commands
+- Build: \`${analysis.commands.build || 'npm run build'}\`
+- Test: \`${analysis.commands.test || 'npm test'}\`
+- Lint: \`${analysis.commands.lint || 'npm run lint'}\`
+- Typecheck: \`${analysis.commands.typecheck || 'npm run typecheck'}\`
 
-1. Generate an agent PERSONALIZED for this specific project
-2. Include specific instructions tailored to the project's language, framework, and structure
-3. Include instructions to follow the project's rules and conventions
-4. Clearly describe the agent's role, capabilities, and constraints
-5. Include concrete use cases specific to this project, not generic examples
-6. **Write the entire document in ${langName}**
+### Code Conventions
+- Functions: ${analysis.patterns.naming.code.functions}
+- Variables: ${analysis.patterns.naming.code.variables}
+- Constants: ${analysis.patterns.naming.code.constants}
+- Types: ${analysis.patterns.naming.code.types || 'PascalCase'}
+- Test files: ${analysis.patterns.naming.files.tests || '*.test.ts'}
+- Import style: ${analysis.patterns.imports?.style || 'relative'}
+- Export style: ${analysis.patterns.exports?.style || 'named'}
+
+### Project Rules (from CLAUDE.md)
+${existingRules.length > 0 ? existingRules.map(r => `- ${r}`).join('\n') : 'No explicit rules defined'}
+
+### Project Practices
+${conventions.length > 0 ? conventions.map(c => `- ${c}`).join('\n') : 'No explicit conventions defined'}
+
+${claudeMdContent ? `### Full CLAUDE.md Content (for deep context)\n\`\`\`\n${claudeMdContent.slice(0, 2000)}${claudeMdContent.length > 2000 ? '\n...(truncated)' : ''}\n\`\`\`` : ''}
+
+### Related Agents (for potential collaboration)
+${existingAgentNames.length > 0 ? existingAgentNames.map(n => `- ${n}`).join('\n') : 'This is the first agent'}
+
+## Generation Requirements
+
+1. **Be EXTREMELY specific** to this project:
+   - Reference actual directory paths (e.g., "when working in \`${analysis.patterns.structure.sourceDir}\`...")
+   - Mention the specific framework/versions
+   - Use the project's actual commands
+
+2. **Include project-specific code examples**:
+   - Show examples using the project's naming conventions
+   - Use the project's test framework syntax
+   - Follow the import/export style
+
+3. **Reference other agents** if relevant:
+   - Mention when to hand off to other agents
+   - Describe complementary workflows
+
+4. **Constraints must be actionable**:
+   - Include verification commands (e.g., "Run \`${analysis.commands.test}\` after changes")
+   - Reference project-specific limits or rules
+
+5. **Usage Examples must be concrete**:
+   - Use realistic file paths from this project
+   - Show actual commands the user would run
 
 ## Output Format
-
-Output Markdown with the following structure:
 
 \`\`\`markdown
 # {Agent Name}
 
-{One-line description in ${langName}}
+{One-line description connecting to ${analysis.projectName}}
 
 ## Role
 
-{Specific role in ${langName}}
+{Role specific to this ${analysis.stack.language}/${analysis.stack.framework} project}
 
 ## Expertise
 
-{Detailed expertise in ${langName}}
+{Bulleted list of expertise areas, referencing project specifics}
 
 ## Instructions
 
-{Specific instructions in ${langName}}
+{Step-by-step instructions with project-specific details}
+{Include subsections for different scenarios}
+{Reference actual paths like \`${analysis.patterns.structure.sourceDir}/...\`}
 
 ## Constraints
 
-{Constraints in ${langName}}
+{Numbered constraints with verification steps}
+{Include commands like \`${analysis.commands.test}\`, \`${analysis.commands.lint}\`}
 
 ## Usage Examples
 
-{Examples in ${langName}}
+{3+ concrete examples with:}
+- Realistic prompts a user might give
+- Expected behavior referencing project structure
 \`\`\`
 
-Output ONLY the Markdown content.`;
+Output ONLY the Markdown content, no code fences around it.`;
 }
 
 // ============================================
