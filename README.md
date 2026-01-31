@@ -6,6 +6,10 @@
 
 > Shape-shifting project intelligence for Claude Code
 
+<p align="center">
+  <img src="demo.svg" alt="Proteus Demo" width="700">
+</p>
+
 Proteus analyzes your project and generates **project-specific agents** — specialized AI assistants that understand your codebase's language, framework, conventions, and rules.
 
 ## Why Proteus?

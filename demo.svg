@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="580" viewBox="0 0 800 580">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1b26"/>
+      <stop offset="100%" style="stop-color:#24283b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Window -->
+  <rect width="800" height="580" rx="12" fill="url(#bg)"/>
+
+  <!-- Title bar -->
+  <rect width="800" height="36" rx="12" fill="#1a1b26"/>
+  <rect y="24" width="800" height="12" fill="#1a1b26"/>
+
+  <!-- Window buttons -->
+  <circle cx="24" cy="18" r="6" fill="#ff5f56"/>
+  <circle cx="44" cy="18" r="6" fill="#ffbd2e"/>
+  <circle cx="64" cy="18" r="6" fill="#27c93f"/>
+
+  <!-- Title -->
+  <text x="400" y="23" text-anchor="middle" fill="#787c99" font-family="SF Mono, Monaco, monospace" font-size="13">proteus — ~/my-project</text>
+
+  <!-- Terminal content -->
+  <g font-family="SF Mono, Monaco, Consolas, monospace" font-size="14">
+    <!-- Command -->
+    <text x="24" y="70" fill="#7aa2f7">❯</text>
+    <text x="44" y="70" fill="#c0caf5">npx agent-proteus</text>
+
+    <!-- Logo box -->
+    <text x="24" y="105" fill="#7dcfff">╔═══════════════════════════════════════╗</text>
+    <text x="24" y="123" fill="#7dcfff">║</text>
+    <text x="52" y="123" fill="#c0caf5" font-weight="bold">🔱 PROTEUS</text>
+    <text x="348" y="123" fill="#7dcfff">║</text>
+    <text x="24" y="141" fill="#7dcfff">║</text>
+    <text x="52" y="141" fill="#565f89">Shape-shifting project intelligence</text>
+    <text x="348" y="141" fill="#7dcfff">║</text>
+    <text x="24" y="159" fill="#7dcfff">╚═══════════════════════════════════════╝</text>
+
+    <!-- Status -->
+    <text x="24" y="194" fill="#9ece6a">✓</text>
+    <text x="44" y="194" fill="#c0caf5">Claude Code detected - using AI-powered generation</text>
+
+    <!-- Language selection -->
+    <text x="24" y="224" fill="#9ece6a">✔</text>
+    <text x="44" y="224" fill="#c0caf5">Output language:</text>
+    <text x="180" y="224" fill="#bb9af7">日本語</text>
+
+    <!-- Tech Stack -->
+    <text x="24" y="264" fill="#7aa2f7" font-weight="bold">📊 Analysis Summary</text>
+
+    <text x="24" y="294" fill="#7dcfff">Tech Stack:</text>
+    <text x="44" y="314" fill="#565f89">Language:</text>
+    <text x="150" y="314" fill="#c0caf5">typescript</text>
+    <text x="44" y="334" fill="#565f89">Framework:</text>
+    <text x="150" y="334" fill="#c0caf5">nextjs 14</text>
+    <text x="44" y="354" fill="#565f89">Testing:</text>
+    <text x="150" y="354" fill="#c0caf5">vitest</text>
+
+    <!-- Agents header -->
+    <text x="24" y="394" fill="#7dcfff">🤖 Generating agent suggestions...</text>
+
+    <!-- Agents list -->
+    <text x="24" y="424" fill="#7aa2f7">1.</text>
+    <text x="50" y="424" fill="#c0caf5" font-weight="bold">nextjs-app-router-optimizer</text>
+    <text x="50" y="444" fill="#565f89">App Router のパフォーマンス最適化を支援</text>
+
+    <text x="24" y="474" fill="#7aa2f7">2.</text>
+    <text x="50" y="474" fill="#c0caf5" font-weight="bold">vitest-coverage-improver</text>
+    <text x="50" y="494" fill="#565f89">テストカバレッジの向上と品質改善</text>
+
+    <!-- Success -->
+    <text x="24" y="534" fill="#9ece6a">✅ Created .claude/agents/nextjs-app-router-optimizer.md</text>
+    <text x="24" y="554" fill="#9ece6a">✅ Created .claude/skills/proteus/SKILL.md</text>
+  </g>
+</svg>
