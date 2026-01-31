@@ -1,5 +1,5 @@
 {
-  "name": "proteus-cli",
+  "name": "agent-proteus",
   "version": "0.1.0",
   "description": "Auto-generate CLAUDE.md by analyzing your project. Shape-shifting project intelligence for Claude Code.",
   "keywords": [

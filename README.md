@@ -18,10 +18,10 @@ Claude Code works best with context. But generic agents don't know your project'
 
 ```bash
 # Run directly with npx
-npx proteus-cli
+npx agent-proteus
 
 # Or install globally
-npm install -g proteus-cli
+npm install -g agent-proteus
 ```
 
 ## Quick Start
@@ -32,59 +32,56 @@ proteus
 
 # Preview without saving
 proteus --dry-run
+
+# Specify output language
+proteus --lang ja
 ```
 
 Proteus will:
 1. Analyze your project structure
 2. Read existing CLAUDE.md (if present) for rules
-3. Generate specialized agents
-4. Save to `.agents/` directory
+3. Suggest project-specific agents using Claude Code
+4. Generate selected agents to `.claude/agents/`
+5. Optionally generate `/proteus` skill for easy routing
 
-## Generated Agents
+## Generated Structure
 
 ```
-.agents/
-├── code-reviewer.md   # コードレビュー専門
-├── test-writer.md     # テスト作成専門
-├── refactorer.md      # リファクタリング専門
-└── docs-writer.md     # ドキュメント作成専門
+.claude/
+├── agents/                    # Project-specific agents
+│   ├── rails-graphql-type-generator.md
+│   ├── rspec-request-spec-writer.md
+│   └── ...
+└── skills/
+    └── proteus/
+        └── SKILL.md           # Router skill for agents
 ```
-
-Each agent contains:
-- Project context (language, framework, tools)
-- Directory structure knowledge
-- Naming conventions
-- Project-specific rules (from CLAUDE.md)
-- Role-specific checklists
 
 ## Commands
 
 ```bash
-# Default: Generate agents (transform)
+# Default: Analyze and generate agents
 proteus
 
-# Generate specific agents only
-proteus -a code-reviewer test-writer
-
-# Generate to custom directory
-proteus -o .claude/agents
-
-# List available agent types
-proteus list
-
-# Generate CLAUDE.md only (legacy)
+# Generate CLAUDE.md only
 proteus init
+
+# Update agent list in CLAUDE.md or agents.md
+proteus registry
+
+# Just analyze (no generation)
+proteus analyze
 ```
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output <dir>` | Output directory (default: `.agents`) |
-| `-a, --agents <types...>` | Specific agents to generate |
+| `-o, --output <dir>` | Output directory (default: `.claude/agents`) |
+| `-l, --lang <code>` | Output language (en, ja, zh, ko, es, fr, de) |
 | `-d, --dry-run` | Preview without saving |
-| `-f, --force` | Overwrite without confirmation |
-| `--include-claude-md` | Also generate CLAUDE.md |
+| `-f, --force` | Skip confirmations |
+| `--include-claude-md` | Also generate CLAUDE.md if not exists |
 
 ## How It Works
 
@@ -100,16 +97,34 @@ proteus init
 │  2. Read Existing Documents         │
 │  - CLAUDE.md (rules, conventions)   │
 │  - README.md (description)          │
-│  - Existing agents                  │
+│  - Existing agents (avoids dupes)   │
 └─────────────────────────────────────┘
                 ↓
 ┌─────────────────────────────────────┐
-│  3. Generate Personalized Agents    │
-│  - Project-specific knowledge       │
-│  - Human-defined rules included     │
-│  - Role-specific checklists         │
+│  3. Suggest Agents (via Claude)     │
+│  - Dynamic based on your stack      │
+│  - Considers existing coverage      │
+│  - Project-specific naming          │
+└─────────────────────────────────────┘
+                ↓
+┌─────────────────────────────────────┐
+│  4. Generate & Save                 │
+│  - Personalized agent definitions   │
+│  - /proteus skill for routing       │
+│  - Registry in CLAUDE.md            │
 └─────────────────────────────────────┘
 ```
+
+## Smart Agent Suggestions
+
+Proteus adjusts suggestions based on existing coverage:
+
+| Existing Agents | Max Suggestions |
+|-----------------|-----------------|
+| 0 | 5 agents |
+| 1-2 | 3 agents |
+| 3-4 | 2 agents |
+| 5+ | 0-1 agents (if gaps exist) |
 
 ## Supported Languages & Frameworks
 
@@ -123,40 +138,39 @@ proteus init
 | Java | Spring |
 | PHP | Laravel |
 
-## Agent Types
+## Example: Rails Project
 
-| Type | Purpose |
-|------|---------|
-| `code-reviewer` | コードレビュー、ベストプラクティスの確認 |
-| `test-writer` | テストコードの作成 |
-| `refactorer` | リファクタリング、コード改善 |
-| `docs-writer` | ドキュメント作成 |
+```bash
+$ proteus
 
-## Example Output
+🔱 PROTEUS - Shape-shifting project intelligence
 
-For a Next.js + Prisma project with existing CLAUDE.md rules:
+✓ Claude Code detected - using AI-powered generation
+✔ Output language: 日本語
 
-```markdown
-# my-app - Code Reviewer
+Tech Stack:
+  Language:    ruby
+  Framework:   rails
+  Testing:     rspec
 
-あなたはこのプロジェクト専属のコードレビュアーです。
+Recommended agents:
+  1. rails-graphql-type-generator
+  2. serializable-pattern-enforcer
+  3. rspec-request-spec-writer
+  ...
 
-## プロジェクト情報
-- **言語**: TypeScript 5.3
-- **フレームワーク**: Next.js 14
-- **ORM**: Prisma
-- **スタイリング**: Tailwind CSS
+✅ Created .claude/agents/rails-graphql-type-generator.md
+✅ Created .claude/skills/proteus/SKILL.md
+```
 
-## プロジェクト固有のルール
-- コミットメッセージは日本語で書く
-- PRは必ずレビューを通す
-- main ブランチへの直接pushは禁止
+## Using Generated Agents
 
-## レビューチェックリスト
-- [ ] 命名規則に従っているか
-- [ ] TypeScriptの型が適切か
-- [ ] N+1問題がないか
-- [ ] `pnpm run lint` が通るか
+```bash
+# Use specific agent
+@rails-graphql-type-generator このResolverをレビューして
+
+# Use /proteus to auto-route
+/proteus テストを書いて  # → automatically uses rspec-request-spec-writer
 ```
 
 ## Contributing
