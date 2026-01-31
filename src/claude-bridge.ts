@@ -2,10 +2,23 @@ import { execSync, spawnSync } from 'child_process';
 import type { AnalysisResult } from './types.js';
 import type { ProjectDocuments } from './detectors/documents.js';
 
+export type OutputLanguage = 'en' | 'ja' | 'zh' | 'ko' | 'es' | 'fr' | 'de';
+
 export interface ClaudeBridgeOptions {
   timeout?: number;  // milliseconds
   verbose?: boolean;
+  lang?: OutputLanguage;
 }
+
+const LANGUAGE_NAMES: Record<OutputLanguage, string> = {
+  en: 'English',
+  ja: 'Japanese',
+  zh: 'Chinese',
+  ko: 'Korean',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+};
 
 export interface AgentSuggestion {
   name: string;
@@ -69,7 +82,7 @@ export function suggestAgents(
   documents: ProjectDocuments,
   options: ClaudeBridgeOptions = {}
 ): AgentSuggestion[] {
-  const prompt = buildAgentSuggestionPrompt(analysis, documents);
+  const prompt = buildAgentSuggestionPrompt(analysis, documents, options.lang || 'en');
   const response = callClaude(prompt, options);
   return parseAgentSuggestions(response);
 }
@@ -82,7 +95,7 @@ export function generateClaudeMdContent(
   documents: ProjectDocuments,
   options: ClaudeBridgeOptions = {}
 ): string {
-  const prompt = buildClaudeMdPrompt(analysis, documents);
+  const prompt = buildClaudeMdPrompt(analysis, documents, options.lang || 'en');
   return callClaude(prompt, options);
 }
 
@@ -96,7 +109,7 @@ export function generateAgentContent(
   documents: ProjectDocuments,
   options: ClaudeBridgeOptions = {}
 ): string {
-  const prompt = buildAgentPrompt(agentName, agentDescription, analysis, documents);
+  const prompt = buildAgentPrompt(agentName, agentDescription, analysis, documents, options.lang || 'en');
   return callClaude(prompt, options);
 }
 
@@ -104,11 +117,14 @@ export function generateAgentContent(
 // Prompt Builders
 // ============================================
 
-function buildAgentSuggestionPrompt(analysis: AnalysisResult, documents: ProjectDocuments): string {
+function buildAgentSuggestionPrompt(analysis: AnalysisResult, documents: ProjectDocuments, lang: OutputLanguage): string {
   const existingRules = documents.claudeMd?.rules || [];
   const existingAgents = documents.existingAgents.map(a => a.name).join(', ') || 'none';
+  const langName = LANGUAGE_NAMES[lang];
 
   return `You are a project analysis expert. Based on the following project information, suggest 5 optimal Claude Code agents specifically tailored for this project.
+
+**IMPORTANT: All output text (description, focus, reason) must be in ${langName}.**
 
 ## Project Information
 
@@ -129,6 +145,7 @@ ${existingRules.length > 0 ? existingRules.map(r => `- ${r}`).join('\n') : 'None
 2. NOT generic agents - they must be specialized for this project's language, framework, and structure
 3. Do not duplicate existing agents
 4. Include a specific role and reason why each agent is valuable for THIS project
+5. **Write all descriptions in ${langName}**
 
 ## Output Format (JSON)
 
@@ -138,9 +155,9 @@ Output in the following format:
 [
   {
     "name": "agent-name-in-kebab-case",
-    "description": "One-line description of what this agent does",
-    "focus": "The specific domain this agent specializes in",
-    "reason": "Why this agent is valuable for this specific project"
+    "description": "One-line description in ${langName}",
+    "focus": "The specific domain in ${langName}",
+    "reason": "Why valuable for this project in ${langName}"
   }
 ]
 \`\`\`
@@ -148,10 +165,13 @@ Output in the following format:
 Output ONLY the JSON.`;
 }
 
-function buildClaudeMdPrompt(analysis: AnalysisResult, documents: ProjectDocuments): string {
+function buildClaudeMdPrompt(analysis: AnalysisResult, documents: ProjectDocuments, lang: OutputLanguage): string {
   const existingContent = documents.claudeMd?.rawContent || '';
+  const langName = LANGUAGE_NAMES[lang];
 
   return `You are a project documentation expert. Based on the following project information, generate a CLAUDE.md file (project description file for Claude Code).
+
+**IMPORTANT: Write the entire document in ${langName}.**
 
 ## Project Information
 
@@ -188,6 +208,7 @@ ${existingContent ? `## Existing CLAUDE.md Content (for reference)\n${existingCo
 2. Include important rules, conventions, and best practices
 3. Output in clear, readable Markdown format
 4. If existing content exists, improve upon it while preserving valuable information
+5. **Write the entire document in ${langName}**
 
 Output ONLY the Markdown content.`;
 }
@@ -196,12 +217,16 @@ function buildAgentPrompt(
   agentName: string,
   agentDescription: string,
   analysis: AnalysisResult,
-  documents: ProjectDocuments
+  documents: ProjectDocuments,
+  lang: OutputLanguage
 ): string {
   const existingRules = documents.claudeMd?.rules || [];
   const conventions = documents.claudeMd?.conventions || [];
+  const langName = LANGUAGE_NAMES[lang];
 
   return `You are a Claude Code agent design expert. Based on the following information, generate a project-specific agent definition in Markdown.
+
+**IMPORTANT: Write the entire agent definition in ${langName}.**
 
 ## Agent Information
 - **Name**: ${agentName}
@@ -228,6 +253,7 @@ ${conventions.length > 0 ? conventions.map(c => `- ${c}`).join('\n') : 'None spe
 3. Include instructions to follow the project's rules and conventions
 4. Clearly describe the agent's role, capabilities, and constraints
 5. Include concrete use cases specific to this project, not generic examples
+6. **Write the entire document in ${langName}**
 
 ## Output Format
 
@@ -236,27 +262,27 @@ Output Markdown with the following structure:
 \`\`\`markdown
 # {Agent Name}
 
-{One-line description}
+{One-line description in ${langName}}
 
 ## Role
 
-{Specific role this agent handles}
+{Specific role in ${langName}}
 
 ## Expertise
 
-{Detailed expertise in context of this project}
+{Detailed expertise in ${langName}}
 
 ## Instructions
 
-{Specific instructions for this agent, including project-specific rules}
+{Specific instructions in ${langName}}
 
 ## Constraints
 
-{What this agent should NOT do}
+{Constraints in ${langName}}
 
 ## Usage Examples
 
-{Concrete examples and prompts for using this agent}
+{Examples in ${langName}}
 \`\`\`
 
 Output ONLY the Markdown content.`;

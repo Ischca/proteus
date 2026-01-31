@@ -3,11 +3,13 @@ import type { ProjectDocuments } from './detectors/documents.js';
 import {
   isClaudeAvailable,
   generateClaudeMdContent as claudeGenerateClaudeMd,
+  type OutputLanguage,
 } from './claude-bridge.js';
 
 export interface GenerateOptions extends GeneratorOptions {
   documents?: ProjectDocuments;
   verbose?: boolean;
+  lang?: OutputLanguage;
 }
 
 /**
@@ -24,17 +26,17 @@ export function generateClaudeMd(
   if (isClaudeAvailable()) {
     try {
       if (options.verbose) {
-        console.log('🤖 Claude Codeを使用してCLAUDE.mdを生成中...');
+        console.log('🤖 Generating CLAUDE.md using Claude Code...');
       }
-      return claudeGenerateClaudeMd(result, documents, { verbose: options.verbose });
+      return claudeGenerateClaudeMd(result, documents, { verbose: options.verbose, lang: options.lang });
     } catch (error) {
-      console.warn('⚠️ Claude Code呼び出しに失敗、フォールバックを使用します');
+      console.warn('⚠️ Claude Code call failed, using fallback');
       if (options.verbose && error instanceof Error) {
-        console.warn(`  詳細: ${error.message}`);
+        console.warn(`  Details: ${error.message}`);
       }
     }
   } else if (options.verbose) {
-    console.log('ℹ️ Claude Codeが利用できないため、テンプレートを使用します');
+    console.log('ℹ️ Claude Code not available, using template');
   }
 
   // Fallback to template-based generation

@@ -5,6 +5,7 @@ import {
   suggestAgents as claudeSuggestAgents,
   generateAgentContent as claudeGenerateAgent,
   type AgentSuggestion,
+  type OutputLanguage,
 } from './claude-bridge.js';
 
 export interface GeneratedAgent {
@@ -17,6 +18,7 @@ export interface GeneratedAgent {
 export interface AgentGeneratorOptions {
   outputDir?: string;
   verbose?: boolean;
+  lang?: OutputLanguage;
 }
 
 // Re-export for convenience
@@ -32,21 +34,21 @@ export function suggestAgents(
 ): AgentSuggestion[] {
   if (!isClaudeAvailable()) {
     if (options.verbose) {
-      console.log('⚠️ Claude Codeが利用できないため、デフォルトの提案を使用します');
+      console.log('⚠️ Claude Code not available, using default suggestions');
     }
     return getDefaultSuggestions(analysis);
   }
 
   try {
     if (options.verbose) {
-      console.log('🤖 Claude Codeにエージェント候補を問い合わせ中...');
+      console.log('🤖 Querying Claude Code for agent suggestions...');
     }
-    return claudeSuggestAgents(analysis, documents, { verbose: options.verbose });
+    return claudeSuggestAgents(analysis, documents, { verbose: options.verbose, lang: options.lang });
   } catch (error) {
     if (options.verbose) {
-      console.warn('⚠️ Claude Code呼び出しに失敗、デフォルトの提案を使用します');
+      console.warn('⚠️ Claude Code call failed, using default suggestions');
       if (error instanceof Error) {
-        console.warn(`  詳細: ${error.message}`);
+        console.warn(`  Details: ${error.message}`);
       }
     }
     return getDefaultSuggestions(analysis);
@@ -66,7 +68,7 @@ export function generateAgent(
 
   if (!isClaudeAvailable()) {
     if (options.verbose) {
-      console.log(`⚠️ Claude Codeが利用できないため、${suggestion.name}のフォールバックを使用します`);
+      console.log(`⚠️ Claude Code not available, using fallback for ${suggestion.name}`);
     }
     return {
       name: suggestion.name,
@@ -78,14 +80,14 @@ export function generateAgent(
 
   try {
     if (options.verbose) {
-      console.log(`🤖 ${suggestion.name} エージェントを生成中...`);
+      console.log(`🤖 Generating ${suggestion.name} agent...`);
     }
     const content = claudeGenerateAgent(
       suggestion.name,
       suggestion.description,
       analysis,
       documents,
-      { verbose: options.verbose }
+      { verbose: options.verbose, lang: options.lang }
     );
 
     return {
@@ -96,9 +98,9 @@ export function generateAgent(
     };
   } catch (error) {
     if (options.verbose) {
-      console.warn(`⚠️ ${suggestion.name}の生成に失敗、フォールバックを使用します`);
+      console.warn(`⚠️ Failed to generate ${suggestion.name}, using fallback`);
       if (error instanceof Error) {
-        console.warn(`  詳細: ${error.message}`);
+        console.warn(`  Details: ${error.message}`);
       }
     }
     return {

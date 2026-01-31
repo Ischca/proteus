@@ -14,7 +14,17 @@ import { detectCommands } from './detectors/commands.js';
 import { detectProjectDocuments } from './detectors/documents.js';
 import { generateClaudeMd } from './generator.js';
 import { suggestAgents, generateAgents, type AgentSuggestion } from './agent-generator.js';
-import { isClaudeAvailable } from './claude-bridge.js';
+import { isClaudeAvailable, type OutputLanguage } from './claude-bridge.js';
+
+const REASON_LABEL: Record<OutputLanguage, string> = {
+  en: 'Reason',
+  ja: '理由',
+  zh: '原因',
+  ko: '이유',
+  es: 'Razón',
+  fr: 'Raison',
+  de: 'Grund',
+};
 import type { AnalysisResult, CLIOptions, GeneratorOptions } from './types.js';
 
 // Read version from package.json
@@ -34,6 +44,7 @@ interface TransformOptions {
   interactive: boolean;
   includeClaudeMd: boolean;
   verbose: boolean;
+  lang?: OutputLanguage;
 }
 
 // ============================================
@@ -153,7 +164,28 @@ async function runTransform(options: TransformOptions) {
     console.log(chalk.gray('  Install Claude Code for better results: https://claude.ai/code\n'));
   }
 
-  console.log(chalk.gray(`Analyzing ${cwd}...\n`));
+  // Ask for output language
+  let lang: OutputLanguage = options.lang || 'en';
+  if (!options.lang && options.interactive && !options.force) {
+    const { selectedLang } = await prompts({
+      type: 'select',
+      name: 'selectedLang',
+      message: 'Output language for generated files?',
+      choices: [
+        { title: 'English', value: 'en' },
+        { title: '日本語 (Japanese)', value: 'ja' },
+        { title: '中文 (Chinese)', value: 'zh' },
+        { title: '한국어 (Korean)', value: 'ko' },
+        { title: 'Español (Spanish)', value: 'es' },
+        { title: 'Français (French)', value: 'fr' },
+        { title: 'Deutsch (German)', value: 'de' },
+      ],
+      initial: 0,
+    });
+    lang = selectedLang || 'en';
+  }
+
+  console.log(chalk.gray(`\nAnalyzing ${cwd}...\n`));
 
   // Step 1: Analyze project
   const analysis = await analyze(cwd);
@@ -178,7 +210,7 @@ async function runTransform(options: TransformOptions) {
   // Step 3: Get agent suggestions from Claude Code
   console.log(chalk.cyan('\n🤖 Generating agent suggestions...\n'));
 
-  const suggestions = suggestAgents(analysis, docs, { verbose: options.verbose });
+  const suggestions = suggestAgents(analysis, docs, { verbose: options.verbose, lang });
 
   if (suggestions.length === 0) {
     console.log(chalk.yellow('No agent suggestions available'));
@@ -187,6 +219,7 @@ async function runTransform(options: TransformOptions) {
 
   // Step 4: Interactive selection
   let selectedSuggestions: AgentSuggestion[];
+  const reasonLabel = REASON_LABEL[lang];
 
   if (options.interactive && !options.force) {
     console.log(chalk.bold('Recommended agents for this project:\n'));
@@ -195,7 +228,7 @@ async function runTransform(options: TransformOptions) {
       const s = suggestions[i];
       console.log(`  ${chalk.cyan(`${i + 1}.`)} ${chalk.bold(s.name)}`);
       console.log(`     ${chalk.white(s.description)}`);
-      console.log(`     ${chalk.gray(`理由: ${s.reason}`)}`);
+      console.log(`     ${chalk.gray(`${reasonLabel}: ${s.reason}`)}`);
       console.log('');
     }
 
@@ -236,6 +269,7 @@ async function runTransform(options: TransformOptions) {
   const agents = generateAgents(selectedSuggestions, analysis, docs, {
     outputDir,
     verbose: options.verbose,
+    lang,
   });
 
   // Dry run - just print
@@ -297,7 +331,7 @@ async function runTransform(options: TransformOptions) {
         includeComments: true,
         version: VERSION,
       };
-      const claudeContent = generateClaudeMd(analysis, { ...generatorOptions, documents: docs, verbose: options.verbose });
+      const claudeContent = generateClaudeMd(analysis, { ...generatorOptions, documents: docs, verbose: options.verbose, lang });
       await fs.writeFile(path.join(cwd, 'CLAUDE.md'), claudeContent);
       console.log(chalk.green('✅ Created CLAUDE.md'));
     }
@@ -468,6 +502,7 @@ program
   .command('transform', { isDefault: true })
   .description('Analyze project and generate specialized agents (powered by Claude Code)')
   .option('-o, --output <dir>', 'Output directory for agents')
+  .option('-l, --lang <code>', 'Output language (en, ja, zh, ko, es, fr, de)')
   .option('-d, --dry-run', 'Preview without saving', false)
   .option('-f, --force', 'Skip confirmations', false)
   .option('-i, --interactive', 'Interactive mode with confirmations', true)
@@ -482,6 +517,7 @@ program
         interactive: opts.interactive,
         includeClaudeMd: opts.includeClaudeMd,
         verbose: opts.verbose,
+        lang: opts.lang as OutputLanguage | undefined,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);
