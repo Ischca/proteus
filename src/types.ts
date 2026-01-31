@@ -184,3 +184,48 @@ export interface CLIOptions {
   force: boolean;
   verbose: boolean;
 }
+
+// ============================================
+// Agent Types
+// ============================================
+
+export type AgentType =
+  | 'code-reviewer'
+  | 'test-writer'
+  | 'refactorer'
+  | 'docs-writer'
+  | 'api-designer'
+  | 'component-builder'
+  | 'db-reviewer';
+
+export interface AgentConfig {
+  directory: string;
+  format: 'markdown' | 'yaml';
+}
+
+export interface GeneratedAgent {
+  type: AgentType;
+  name: string;
+  path: string;
+  content: string;
+}
+
+export interface TransformOptions {
+  agents: AgentType[];
+  outputDir?: string;
+  dryRun: boolean;
+  force: boolean;
+  interactive: boolean;
+  includeClaudeMd: boolean;
+}
+
+// ============================================
+// Full Analysis (including documents)
+// ============================================
+
+export interface FullAnalysis {
+  projectName: string;
+  projectPath: string;
+  analysis: AnalysisResult;
+  documents: import('./detectors/documents.js').ProjectDocuments;
+}
