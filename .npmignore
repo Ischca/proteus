@@ -1,0 +1,27 @@
+# Source
+src/
+
+# Config
+tsconfig.json
+vitest.config.ts
+.eslintrc.*
+.prettierrc
+
+# Development
+*.log
+.DS_Store
+.env*
+
+# Tests
+**/*.test.ts
+**/*.spec.ts
+__tests__/
+coverage/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
