@@ -58,14 +58,14 @@
 
     <!-- Logo box -->
     <g class="typing line2">
-      <text x="24" y="90" fill="#7dcfff">╔═══════════════════════════════════════╗</text>
+      <text x="24" y="90" fill="#7dcfff">╔════════════════════════════════════╗</text>
       <text x="24" y="108" fill="#7dcfff">║</text>
       <text x="48" y="108" fill="#c0caf5" font-weight="bold">🔱 PROTEUS</text>
-      <text x="360" y="108" fill="#7dcfff">║</text>
+      <text x="312" y="108" fill="#7dcfff">║</text>
       <text x="24" y="126" fill="#7dcfff">║</text>
       <text x="48" y="126" fill="#565f89">Shape-shifting project intelligence</text>
-      <text x="360" y="126" fill="#7dcfff">║</text>
-      <text x="24" y="144" fill="#7dcfff">╚═══════════════════════════════════════╝</text>
+      <text x="312" y="126" fill="#7dcfff">║</text>
+      <text x="24" y="144" fill="#7dcfff">╚════════════════════════════════════╝</text>
     </g>
 
     <!-- Claude Code detected -->
