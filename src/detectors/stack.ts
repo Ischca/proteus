@@ -444,8 +444,27 @@ async function detectStackInDirectory(cwd: string, relativePath: string): Promis
     }
 
     const frameworks = await detectAllFrameworks(ctx, languages);
-    const primaryLang = languages[0];
-    const primaryFramework = frameworks.find(f => f.language === primaryLang.language) || frameworks[0];
+
+    // Determine primary language based on framework if available
+    // If a framework is detected, its associated language should be primary
+    let primaryLang = languages[0];
+    let primaryFramework = frameworks[0];
+
+    if (frameworks.length > 0) {
+      // Prioritize "real" application frameworks over tooling
+      // Rails, Django, etc. are more indicative of the primary language than React in a Rails app
+      const appFrameworks = ['rails', 'django', 'flask', 'fastapi', 'gin', 'echo', 'fiber', 'nestjs', 'actix', 'axum', 'spring', 'laravel'];
+      const primaryAppFramework = frameworks.find(f => appFrameworks.includes(f.framework));
+
+      if (primaryAppFramework) {
+        primaryFramework = primaryAppFramework;
+        primaryLang = languages.find(l => l.language === primaryAppFramework.language) || primaryLang;
+      } else {
+        // Use the first framework's language
+        primaryFramework = frameworks[0];
+        primaryLang = languages.find(l => l.language === frameworks[0].language) || primaryLang;
+      }
+    }
 
     const testFramework = await detectTestFramework(ctx, primaryLang.language);
     const packageManager = await detectPackageManager(ctx, primaryLang.language);
@@ -582,7 +601,20 @@ export async function detectStack(cwd: string): Promise<TechStack> {
     const languages = await detectAllLanguages(ctx);
     const frameworks = await detectAllFrameworks(ctx, languages);
 
-    for (const lang of languages) {
+    // Prioritize app frameworks to determine language order
+    const appFrameworks = ['rails', 'django', 'flask', 'fastapi', 'gin', 'echo', 'fiber', 'nestjs', 'actix', 'axum', 'spring', 'laravel'];
+    const primaryAppFramework = frameworks.find(f => appFrameworks.includes(f.framework));
+
+    // Reorder languages to put the primary framework's language first
+    let orderedLanguages = [...languages];
+    if (primaryAppFramework) {
+      orderedLanguages = [
+        ...languages.filter(l => l.language === primaryAppFramework.language),
+        ...languages.filter(l => l.language !== primaryAppFramework.language),
+      ];
+    }
+
+    for (const lang of orderedLanguages) {
       if (lang.language === 'unknown') continue;
 
       const langFrameworks = frameworks.filter(f => f.language === lang.language);
